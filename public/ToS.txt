@@ -1,0 +1,160 @@
+Terms of Service for Veri Social
+
+Effective Date: April 27, 2026  Last Updated: April 27, 2026
+
+Welcome to Veri Social ("we," "our," or "us"). These Terms of Service ("Terms")
+govern your access to and use of the Veri Social website at https://veri.social,
+our mobile applications, and all associated services (collectively, the
+"Service").
+
+By registering for, accessing, or using the Service, you agree to be bound by
+these Terms and our Privacy Policy. If you do not agree to these Terms, you may
+not use the Service.
+
+1. Description of the Service
+
+Veri Social is a social reputation network designed to help users build and
+share authentic social profiles based on peer reviews, ratings, and
+endorsements. We provide the infrastructure for users to interact, leave
+feedback, and view the public reputation of other individuals on the platform.
+
+2. Eligibility and Identity Verification
+
+You must be at least 13 years old to use the Service. By using the
+Service, you represent and warrant that you have the legal capacity to form a
+binding contract.
+
+Authenticity and Live Selfie Verification: Veri Social is built on trust and
+authenticity. To prevent bots, fake accounts, and impersonation, we require
+users to verify their identity upon registration.
+
+  - Verification Process: You must complete a live selfie verification process.
+  - Third-Party Processing: This process is securely handled by our trusted
+    third-party verification partner. We strictly limit the information shared
+    with this partner to your live selfie and name solely for the purpose of
+    verifying your identity.
+  - No Sale of Likeness: As detailed in our Privacy Policy, your likeness,
+    biometric data, and contact information will never be sold by us or our
+    verification partners.
+  - One Account per Person: You may only create and maintain one active Veri
+    Social account.
+
+3. Account Security
+
+You are responsible for safeguarding your account login credentials. You agree
+not to disclose your password to any third party and to notify us immediately of
+any unauthorized use of your account. You are responsible for all activities
+that occur under your account.
+
+4. User Conduct and Content Guidelines
+
+"Content" refers to any text, images, ratings, reviews, comments, or other
+materials you post on the Service. You retain ownership of your Content, but you
+are solely responsible for it.
+
+Because Veri Social relies on authentic peer feedback, you agree NOT to:
+
+  - Post Defamatory or False Content: Post reviews, ratings, or comments about
+    another user that you know to be false, misleading, or defamatory.
+  - Harass or Bully: Engage in targeted harassment, bullying, doxing (publishing
+    private contact information), or intimidation of other users.
+  - Post Offensive Material: Upload content that promotes violence, hate speech,
+    illegal acts, or contains sexually explicit material.
+  - Manipulate the System: Buy, sell, or trade reviews/ratings; use automated
+    scripts to inflate or deflate reputation scores; or retaliate against users
+    for leaving honest reviews.
+  - Impersonate Others: Create accounts in the name of another person, use a
+    fake identity, or misrepresent your affiliation with any person or entity.
+
+We reserve the right (but have no obligation) to review, flag, modify, or remove
+any Content that violates these Terms or that we determine, in our sole
+discretion, is harmful to the platform.
+
+5. Disputing Content and Platform Immunity
+
+Veri Social provides a platform for users to share their opinions. We do not
+independently verify the accuracy of user-generated reviews or ratings.
+
+  - Platform Protection (Section 230): If you are based in the United States,
+    Veri Social acts as an "interactive computer service" under Section 230 of
+    the Communications Decency Act. We are not the publisher or speaker of any
+    information provided by another user, and we are not legally liable for
+    defamatory or otherwise actionable Content posted by users.
+  - Flagging Content: If you believe a review violates our User Conduct
+    Guidelines (e.g., it contains hate speech, doxing, or objectively false
+    claims), you may use the in-app "Flag" feature. Veri Social will review
+    flagged Content but makes no guarantee that Content will be removed unless
+    it explicitly violates these Terms or applicable law.
+
+6. Intellectual Property Rights
+
+  - Your Content License: By posting Content on Veri Social, you grant us a
+    worldwide, non-exclusive, royalty-free, transferable, and sub-licensable
+    license to use, reproduce, distribute, prepare derivative works of, display,
+    and perform your Content in connection with operating, promoting, and
+    improving the Service.
+  - Veri Social’s Property: The Service, including its code, design, algorithms,
+    reputation-scoring systems, and trademarks, are the exclusive property of
+    Veri Social and its licensors. You may not copy, modify, or distribute our
+    intellectual property without prior written consent.
+
+7. Termination
+
+We reserve the right to suspend or terminate your account and access to the
+Service at our sole discretion, without notice or liability, for any reason,
+including but not limited to a violation of these Terms. Upon termination, your
+right to use the Service will immediately cease, and we may delete or anonymize
+your profile and Content.
+
+8. Disclaimers of Warranty
+
+THE SERVICE IS PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS. TO THE MAXIMUM
+EXTENT PERMITTED BY LAW, VERI SOCIAL DISCLAIMS ALL WARRANTIES, WHETHER EXPRESS
+OR IMPLIED, INCLUDING THE IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE
+WILL BE UNINTERRUPTED, SECURE, OR ERROR-FREE, OR THAT REPUTATION SCORES OR
+REVIEWS WILL BE ACCURATE OR RELIABLE.
+
+9. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, VERI SOCIAL AND ITS DIRECTORS,
+EMPLOYEES, AND PARTNERS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL,
+SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES,
+WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOODWILL, OR
+OTHER INTANGIBLE LOSSES, RESULTING FROM (A) YOUR ACCESS TO OR USE OF OR
+INABILITY TO ACCESS OR USE THE SERVICE; (B) ANY CONDUCT OR CONTENT OF ANY THIRD
+PARTY ON THE SERVICE, INCLUDING DEFAMATORY, OFFENSIVE, OR ILLEGAL CONDUCT; OR
+(C) UNAUTHORIZED ACCESS, USE, OR ALTERATION OF YOUR CONTENT.
+
+10. Dispute Resolution and Arbitration
+
+Please read this section carefully. It affects your legal rights.
+
+  - Binding Arbitration: Any dispute, claim, or controversy arising out of or
+    relating to these Terms or the breach, termination, enforcement,
+    interpretation, or validity thereof, shall be settled by binding arbitration
+    administered by the American Arbitration Association (AAA) under its
+    Commercial Arbitration Rules, rather than in court.
+  - Class Action Waiver: You and Veri Social agree that any dispute resolution
+    proceedings will be conducted only on an individual basis and not in a
+    class, consolidated, or representative action.
+
+11. Governing Law
+
+These Terms shall be governed by and construed in accordance with the laws of
+the State of New York, without regard to its conflict of law
+provisions. Any legal action or proceeding not subject to arbitration shall be
+brought exclusively in the state or federal courts located in New York of the
+United States of America.
+
+12. Changes to these Terms
+
+We may modify these Terms at any time. If we make material changes, we will
+provide notice through the Service or by email. Your continued use of the
+Service after the effective date of the updated Terms constitutes your
+acceptance of the changes.
+
+13. Contact Information
+
+If you have any questions about these Terms, please contact us at:
+Email: dev@veri.social

@@ -1,0 +1,173 @@
+Privacy Policy for Veri Social
+
+Effective Date: April 26, 2026  Last Updated: April 26, 2026
+
+Welcome to Veri Social ("we," "our," or "us"). We are committed to protecting
+your privacy and ensuring you understand how your information is used on our
+platform. This Privacy Policy explains how we collect, use, disclose, and
+safeguard your personal information when you visit our website at
+https://veri.social, use our mobile applications, or interact with our services
+(collectively, the "Service").
+
+By accessing or using the Service, you signify that you have read, understood,
+and agree to our collection, storage, use, and disclosure of your personal
+information as described in this Privacy Policy.
+
+1. Information We Collect
+
+To provide our reputation-based social network and ensure the authenticity of
+our users, we collect information you provide directly to us, information
+collected automatically, and information from third parties.
+
+A. Information You Provide to Us
+
+  - Account Information: When you register, we collect your name, email address,
+    phone number, username, password, and date of birth.
+  - Identity Verification Data (Live Selfie): To maintain the integrity of our
+    platform and ensure users are real people, we require a live selfie
+    verification during registration. We collect this facial image/scan solely
+    for identity verification purposes.
+  - Profile Information: You may provide a profile picture, bio, links to other
+    social media accounts, professional history, and other details to build your
+    reputation profile.
+  - User-Generated Content: As a platform built on social reputation ("What
+    others say about you matters"), we collect the reviews, ratings,
+    endorsements, comments, and messages you post about others, as well as those
+    posted about you.
+  - Communications: Information you provide when you contact customer support or
+    communicate with us.
+
+B. Information We Collect Automatically
+
+  - Device and Usage Data: We collect your IP address, browser type, operating
+    system, device identifiers, referring URLs, and information about your
+    interactions with the Service.
+  - Cookies and Tracking Technologies: We use cookies, web beacons, and similar
+    technologies to track activity on our Service, remember your preferences,
+    and analyze user trends.
+
+C. Information from Third Parties
+
+  - Social Media Integrations: If you choose to link your Veri Social account to
+    third-party networks, we may receive information from those platforms
+    according to their authorization procedures.
+
+2. Our Strict "No Sale" Policy
+
+We believe your personal data belongs to you. We do not sell your contact
+information (such as your email address, phone number, or physical address) to
+any third parties for marketing or any other purposes.
+
+Furthermore, we will never sell your live selfie, biometric data, or likeness at
+any point. Your verification data is strictly used for platform security.
+
+3. How We Use Your Information
+
+We use the collected information for the following purposes:
+
+  - To Verify Your Identity: To process your live selfie during registration and
+    prevent bots, impersonation, or duplicate accounts.
+  - To Provide and Maintain the Service: To create and manage your account,
+    facilitate the posting of reviews/ratings, and calculate reputation scores.
+  - To Personalize Your Experience: To tailor content, suggestions, and
+    connections based on your network and interactions.
+  - To Ensure Safety and Security: To detect, prevent, and address fraud,
+    harassment, fake accounts, and potential breaches of our Terms of Service.
+  - To Communicate with You: To send administrative notices, security alerts,
+    and updates.
+
+4. How We Share Your Information
+
+We only share your information in the following specific situations:
+
+  - Publicly on the Platform: By design, your profile information, public
+    reputation score, and the public reviews/endorsements you write or receive
+    will be visible to other users of Veri Social.
+  - With Identity Verification Partners: We use a secure, trusted third-party
+    service to process your live selfie registration. This third party is
+    strictly limited in what they can access. They are only provided with your
+    live selfie and your name to complete the verification. They are explicitly
+    prohibited from accessing your contact information, profile data, platform
+    activity, or any other personal information, and they are prohibited from
+    using your selfie for any purpose other than verifying your identity for
+    Veri Social.
+  - With Other Service Providers: We share data with trusted third-party vendors
+    who assist us in operating our Service (e.g., cloud hosting, email
+    delivery). These providers are bound by strict data processing agreements.
+  - For Business Transfers: If we are involved in a merger, acquisition,
+    bankruptcy, or sale of assets, your information may be transferred as a
+    business asset (excluding the sale of your contact info or likeness as a
+    standalone asset).
+  - For Legal and Safety Reasons: We may disclose your information if required
+    to do so by law (e.g., a subpoena) or if we believe it is necessary to
+    protect the rights, property, or safety of Veri Social, our users, or the
+    public.
+
+5. Your Privacy Rights and Choices
+
+Depending on your location, you may have the following rights regarding your
+personal data:
+
+  - Access and Portability: You can request a copy of the personal data we hold
+    about you.
+  - Correction: You can edit or update your profile information at any time
+    through your account settings.
+  - Deletion ("Right to be Forgotten"): You can request the deletion of your
+    account and personal data. Note: Because our platform relies on authentic
+    reputation data, if you request deletion, reviews you have written about
+    others may be anonymized rather than deleted, subject to applicable law.
+  - Withdraw Consent: Where we rely on your consent to process data (such as for
+    your live selfie verification), you have the right to withdraw it by
+    deleting your account.
+
+To exercise these rights, please contact us at dev@veri.social.
+
+6. Data Retention
+
+We retain your personal information for as long as your account is active or as
+needed to provide you the Service.
+
+Special Note on Biometric/Verification Data: Your live selfie and any associated
+biometric data are retained only for as long as is necessary to complete the
+initial identity verification process and maintain the ongoing security of your
+account, or as required by applicable law. It is securely destroyed once no
+longer needed for these specific purposes.
+
+7. Data Security
+
+We implement commercially reasonable technical, administrative, and physical
+security measures to protect your information from unauthorized access,
+destruction, or alteration. However, no method of transmission over the Internet
+or electronic storage is 100% secure. Therefore, we cannot guarantee absolute
+security.
+
+8. Children’s Privacy
+
+Veri Social is not intended for individuals under the age of 13. We
+do not knowingly collect personal information from children. If we become aware
+that we have collected personal data from a child without parental consent, we
+will take steps to delete that information promptly.
+
+9. International Data Transfers
+
+Veri Social is headquartered in the United States. Your
+information may be transferred to, stored, and processed in countries other than
+your own. By using our Service, you consent to the transfer of your information
+to facilities located in the United States and to our third-party processors.
+
+10. Changes to this Privacy Policy
+
+We may update this Privacy Policy from time to time to reflect changes in our
+practices or legal requirements. If we make material changes, we will notify you
+by email or by posting a prominent notice on our platform prior to the change
+becoming effective. Your continued use of the Service after the effective date
+constitutes your acceptance of the updated policy.
+
+11. Contact Us
+
+If you have any questions, concerns, or requests regarding this Privacy Policy
+or our data practices, please contact us at:
+
+Veri Social Email: dev@veri.social
+Mailing Address:[Your Company Legal Name] [Street Address] [City, State, Zip Code][Country]
+
