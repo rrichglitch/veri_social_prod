@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate, useNavigationType } from 'react-router-dom';
 import { isSignedIn } from '../utils/authState';
+import { getOAuthSession } from '../utils/oauthSession';
 import { useApp } from '../App';
 import { connectToSpacetimeDB, getProfileByEmail, getDbConnection } from '../utils/spacetime';
 import { runSearch as executeSearch, type SearchResult, type SearchMode, getSearchProvider, setSearchProvider } from '../utils/searchProvider';
@@ -20,8 +21,16 @@ import SearchBar from '../components/SearchBar';
 import AuthActions from '../components/AuthActions';
 import { useOrg } from '../contexts/OrgContext';
 
+// Results cache for the current SPA session: back/forward navigation
+// remounts this page, and re-running the search for a query whose
+// results we already have wastes bandwidth (user-mandated). Module scope
+// survives unmounts; a fresh page load starts empty so hard refreshes
+// always search fresh.
+const searchResultCache = new Map<string, { results: SearchResult[]; allowanceNotice: string | null }>();
+
 function SearchPage() {
   const [searchParams] = useSearchParams();
+  const navigationType = useNavigationType();
 
   // Arriving with ?opts=1 (options button tapped on another page) opens the
   // options menu, then strips the param so refresh/back don't re-trigger.
@@ -159,7 +168,19 @@ function SearchPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        await connectToSpacetimeDB('', undefined);
+        // /search is OUTSIDE AuthGate, so it must establish the right
+        // connection itself: with the session token when one exists
+        // (descriptive search + allowance run under the user identity),
+        // anonymous otherwise. Connecting anonymously here — as it
+        // previously did — runs the search as the anon identity (orgs-only
+        // tier, no gpu allowance) and results stay empty after login until
+        // the page remounts.
+        const session = getOAuthSession();
+        if (session) {
+          await connectToSpacetimeDB(session.email, session.stToken);
+        } else {
+          await connectToSpacetimeDB('', undefined);
+        }
         setIsConnected(true);
       } catch (e) {
         console.log('Connect failed:', e);
@@ -206,6 +227,25 @@ function SearchPage() {
 
   useEffect(() => {
     let cancelled = false;
+    // Back/forward (POP) remounts reuse cached results for the same
+    // query+filters+location+provider — no fresh search, no bandwidth.
+    const cacheKey = JSON.stringify({
+      q: query, g: genderFilter, a1: ageMin, a2: ageMax,
+      i: showIndividuals, o: showOrganizations, p: providerMode,
+      loc: activePos ? [activePos.lat, activePos.lng] : null,
+    });
+    if (navigationType === 'POP') {
+      const hit = searchResultCache.get(cacheKey);
+      if (hit) {
+        const sorted = nearbyFirst
+          ? [...hit.results].sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))
+          : hit.results;
+        setResults(sorted);
+        setAllowanceNotice(hit.allowanceNotice);
+        setIsLoading(false);
+        return;
+      }
+    }
     const searchQuery = async () => {
       if (!query.trim()) {
         setResults([]);
@@ -243,6 +283,12 @@ function SearchPage() {
         }
 
         setResults(found);
+        // Remember for back/forward remounts (cap so the map can't grow unbounded)
+        searchResultCache.set(cacheKey, { results: found, allowanceNotice });
+        if (searchResultCache.size > 12) {
+          const oldest = searchResultCache.keys().next().value;
+          if (oldest !== undefined) searchResultCache.delete(oldest);
+        }
       } catch (e: any) {
         if (e?.message === 'allowance_exhausted') {
           const { fetchMyAllowance, allowanceMessage } = await import('../utils/allowance');
@@ -262,7 +308,10 @@ function SearchPage() {
 
     searchQuery();
     return () => { cancelled = true; };
-  }, [query, isConnected, activePos, nearbyFirst, genderFilter, ageMin, ageMax, showIndividuals, showOrganizations, searchTick]);
+    // signedIn must be a dep: signing in/out after a cold load changes the
+    // tier (anon = orgs only) — without it the stale empty result persists
+    // until the page is remounted.
+  }, [query, isConnected, activePos, nearbyFirst, genderFilter, ageMin, ageMax, showIndividuals, showOrganizations, searchTick, signedIn, navigationType, providerMode]);
 
   return (
     <div className="search-page">
