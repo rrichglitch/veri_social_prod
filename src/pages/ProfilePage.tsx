@@ -9,7 +9,8 @@ import Gallery from '../components/Gallery';
 import { useOrg } from '../contexts/OrgContext';
 import TopBar from '../components/TopBar';
 import AuthActions from '../components/AuthActions';
-import { getProfileByIdentity, checkIsFollowing, createStoryPost, getTodayStoryPostCount, getStoriesForProfile, connectToSpacetimeDB, getProfileByEmail, getOrganizationById, orgAccountIdentityHex, checkIsFriend, getOrgMemberRequestStatus, sendOrgMemberRequest, leaveOrg, uploadStoryMedia } from '../utils/spacetime';
+import { getProfileByIdentity, getProfileByIdentitySync, checkIsFollowing, createStoryPost, getTodayStoryPostCount, getStoriesForProfile, connectToSpacetimeDB, getProfileByEmail, getOrganizationById, orgAccountIdentityHex, checkIsFriend, getOrgMemberRequestStatus, sendOrgMemberRequest, leaveOrg, uploadStoryMedia } from '../utils/spacetime';
+import { preloadVisitedProfile, preloadOrg, getProfileSnapshot, getOrgSnapshot, fetchOrgProfile, refreshFetchedStories } from '../utils/clientData';
 import { compressGalleryImage } from '../utils/imageCompress';
 import { CHAR_LIMITS, MAX_MEDIA_SIZE_BYTES, ALLOWED_MEDIA_TYPES, DAILY_POST_LIMIT } from '../config';
 import { isFileSizeValid, isFileTypeValid } from '../utils/sanitize';
@@ -24,6 +25,81 @@ interface StoryPost {
   posterIdentity: string;
   posterName: string;
   posterPicture: string;
+}
+
+// Sync first-paint source for the profile header: read the target row from
+// the local subscription cache (user_profile / organization are fully
+// subscribed) instead of gating the first render on the get_profile_by_identity
+// RPC — the procedure still runs right after as the 2s freshness poll.
+// Returns the EXACT same shape the RPC/loadProfile branches produce.
+function buildProfileFromCache(
+  isOrgView: boolean,
+  orgId: bigint,
+  orgIdentityHex: string,
+  profileIdentity: string | undefined
+): any {
+  if (isOrgView) {
+    const org = getOrganizationById(orgId);
+    if (org) {
+      return {
+        identity: orgIdentityHex,
+        fullName: org.name,
+        profilePicture: org.picture,
+        city: org.city,
+        description: org.description,
+        createdAt: org.createdAt,
+        gender: org.gender,
+        hideMembers: !!org.hideMembers,
+        leaderIdentityHex: org.leaderIdentity.toHexString(),
+      };
+    }
+    // Org row not synced yet — fall back to the click-context preload
+    // (search results snapshot org top-info before navigation).
+    const pre = getOrgSnapshot(orgId);
+    if (pre) {
+      return {
+        identity: orgIdentityHex,
+        fullName: pre.name,
+        profilePicture: pre.picture,
+        city: pre.city,
+        description: pre.description,
+        createdAt: undefined,
+        gender: pre.gender,
+        hideMembers: !!pre.hideMembers,
+        leaderIdentityHex: '',
+      };
+    }
+    return null;
+  }
+  if (!profileIdentity) return null;
+  // Viewing your OWN profile redirects to /me — never render it as "another".
+  if (getOAuthSession()?.identityHex === profileIdentity) return null;
+  // Click-context preload FIRST (merged memory/view/fetch tiers in
+  // clientData): search results, friends/chats/notifications/story rows and
+  // prior lookups snapshot the top info here — the header paints instantly
+  // with no full-table cache and no network round trip. The 2s procedure
+  // refresh fills whatever the preload lacks.
+  const pre = getProfileSnapshot(profileIdentity);
+  if (pre) {
+    return {
+      identity: { toHexString: () => profileIdentity },
+      email: '',
+      fullName: pre.fullName,
+      city: pre.city,
+      description: pre.description,
+      profilePicture: pre.picture,
+      profilePictureSmall: pre.picture,
+      profilePictureUrl: pre.fullPicture || '',
+      locationPrecision: 'off',
+      gender: pre.gender,
+      age: pre.age,
+      hideFriends: !!pre.hideFriends,
+      disabled: false,
+      createdAtMicros: pre.createdAtMicros,
+      isPro: !!pre.isPro,
+    };
+  }
+  return getProfileByIdentitySync(profileIdentity);
 }
 
 // ONE page for BOTH other-individual profiles (/profile/:identity) and
@@ -78,12 +154,12 @@ function ProfilePage() {
     }
   }, []);
 
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(() => buildProfileFromCache(isOrgView, orgId, orgIdentityHex, profileIdentity));
   const [isFollowing, setIsFollowing] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [requestPending, setRequestPending] = useState(false);
   const [isLeader, setIsLeader] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => profile === null);
   const [stories, setStories] = useState<StoryPost[]>([]);
 
   const [storyContent, setStoryContent] = useState('');
@@ -105,6 +181,9 @@ function ProfilePage() {
 
   useEffect(() => {
     const loadProfile = async () => {
+      // Instant swap to the new target from the sync cache (no RPC); the
+      // procedure below only refreshes. On mount this mirrors the lazy init.
+      setProfile(buildProfileFromCache(isOrgView, orgId, orgIdentityHex, profileIdentity));
       if (!isOrgView && currentIdentityHex === profileIdentity) {
         setIsLoading(false);
         return;
@@ -116,7 +195,8 @@ function ProfilePage() {
 
       try {
         if (isOrgView) {
-          const org = getOrganizationById(orgId);
+          // my_orgs view for orgs I belong to; fetchOrgProfile for the rest.
+          const org = getOrganizationById(orgId) || (await fetchOrgProfile(orgId));
           if (!org) {
             setIsLoading(false);
             return;
@@ -132,6 +212,16 @@ function ProfilePage() {
             hideMembers: !!org.hideMembers,
             leaderIdentityHex: org.leaderIdentity.toHexString(),
           });
+          // VISITED tier (orgs): top data for the last orgs opened.
+          preloadOrg(orgId, {
+            name: org.name,
+            picture: (org as any).pictureSmall || org.picture,
+            fullPicture: (org as any).pictureUrl || org.picture,
+            city: org.city,
+            description: org.description,
+            gender: org.gender,
+            hideMembers: !!org.hideMembers,
+          });
           if (currentIdentityHex) {
             // Following the org is a SEPARATE quantity from membership.
             setIsFollowing(await checkIsFollowing(orgIdentityHex, currentIdentityHex));
@@ -145,6 +235,22 @@ function ProfilePage() {
         } else {
           const profileData = await getProfileByIdentity(profileIdentity!);
           setProfile(profileData);
+          // VISITED tier: top data (header fields only — never stories,
+          // posts, or friends) for the last 10 other profiles opened.
+          if (profileData) {
+            preloadVisitedProfile(profileIdentity!, {
+              fullName: profileData.fullName,
+              picture: profileData.profilePictureSmall || profileData.profilePicture,
+              fullPicture: profileData.profilePictureUrl || profileData.profilePicture,
+              city: profileData.city,
+              description: profileData.description,
+              gender: profileData.gender,
+              age: profileData.age,
+              hideFriends: profileData.hideFriends,
+              createdAtMicros: profileData.createdAtMicros,
+              isPro: profileData.isPro,
+            });
+          }
 
           if (profileData && currentIdentityHex) {
             const following = await checkIsFollowing(profileIdentity!, currentIdentityHex);
@@ -252,7 +358,8 @@ function ProfilePage() {
       setStoryMedia(null);
       setMediaPreview(null);
 
-      // Refresh stories
+      // Refresh stories (invalidate the on-demand fetch cache first)
+      refreshFetchedStories(ownerIdentity);
       const updatedStories = await getStoriesForProfile(ownerIdentity);
       setStories(updatedStories);
     } catch (error) {
@@ -345,7 +452,12 @@ function ProfilePage() {
         />
 
         {activeTab === 'friends' ? (
-          <FriendsList identity={isOrgView ? orgIdentityHex : profileIdentity!} emptyText={isOrgView ? 'No members yet.' : 'No friends yet.'} />
+          <FriendsList
+            identity={isOrgView ? orgIdentityHex : profileIdentity!}
+            mode={isOrgView ? 'members' : 'friends'}
+            orgId={isOrgView ? orgId : undefined}
+            emptyText={isOrgView ? 'No members yet.' : 'No friends yet.'}
+          />
         ) : (
         <>
         {canPost && (

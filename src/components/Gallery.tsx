@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getGallery, deleteGalleryPhoto, uploadGalleryPhoto, type GalleryPhoto } from '../utils/spacetime';
+import { fetchProfileGallery, refreshFetchedGallery } from '../utils/clientData';
 import { compressGalleryImage } from '../utils/imageCompress';
 import { GALLERY_MAX_PHOTOS } from '../config';
 
@@ -24,11 +25,27 @@ function Gallery({ ownerIdentityHex, isOwn, actingAsOrgId, actingAsOrgIdentityHe
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const update = () => setPhotos(getGallery(ownerIdentityHex));
+    if (isOwn) {
+      const update = () => setPhotos(getGallery(ownerIdentityHex));
+      update();
+      const interval = setInterval(update, 2500);
+      return () => clearInterval(interval);
+    }
+    // Other people's galleries: fetched on demand (memoized); poll refreshes
+    // by invalidating first so new uploads/deletes appear while open.
+    let alive = true;
+    const update = async () => {
+      refreshFetchedGallery(ownerIdentityHex);
+      const rows = (await fetchProfileGallery(ownerIdentityHex)) as GalleryPhoto[];
+      if (alive) setPhotos(rows);
+    };
     update();
-    const interval = setInterval(update, 2500);
-    return () => clearInterval(interval);
-  }, [ownerIdentityHex]);
+    const interval = setInterval(update, 5000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [ownerIdentityHex, isOwn]);
 
   const remaining = GALLERY_MAX_PHOTOS - photos.length;
 

@@ -4,6 +4,7 @@ import { isSignedIn } from '../utils/authState';
 import { getOAuthSession } from '../utils/oauthSession';
 import { useApp } from '../App';
 import { connectToSpacetimeDB, getProfileByEmail, getDbConnection, getOrganizationById } from '../utils/spacetime';
+import { fetchOrgProfile } from '../utils/clientData';
 import { runSearch as executeSearch, type SearchResult, type SearchMode, getSearchProvider, setSearchProvider } from '../utils/searchProvider';
 import { formatMiles } from '../utils/geo';
 
@@ -301,7 +302,7 @@ function SearchPage() {
             ageMax: ageMax ? parseInt(ageMax, 10) : undefined,
             showIndividuals: effIndividuals,
             showOrganizations: effOrganizations,
-            limit: 60,
+            limit: 150,
           },
           activePos,
         });
@@ -309,16 +310,25 @@ function SearchPage() {
 
         let filtered = found;
         if (claimableOnly) {
-          filtered = found.filter((r) => {
-            if (r.type !== 'org' || r.orgId === undefined) return false;
-            const org = getOrganizationById(r.orgId);
-            if (!org) return false;
-            const leaderHex =
-              typeof (org as any).leaderIdentity?.toHexString === 'function'
-                ? (org as any).leaderIdentity.toHexString()
-                : String((org as any).leaderIdentity ?? '');
-            return leaderHex.toLowerCase() === ZERO_LEADER;
-          });
+          // Scoped data layer: member orgs come from my_orgs; any other org
+          // is fetched on demand so claimable (leaderless) orgs still match.
+          const claimInfo = await Promise.all(
+            found
+              .filter((r) => r.type === 'org' && r.orgId !== undefined)
+              .map(async (r) => {
+                const org = getOrganizationById(r.orgId!) || (await fetchOrgProfile(r.orgId!));
+                const leaderHex = org
+                  ? typeof (org as any).leaderIdentity?.toHexString === 'function'
+                    ? (org as any).leaderIdentity.toHexString()
+                    : typeof (org as any).leaderIdentity === 'string'
+                      ? (org as any).leaderIdentity
+                      : String((org as any).leaderIdentityHex ?? '')
+                  : '';
+                return { orgId: r.orgId!, leaderHex: leaderHex.toLowerCase() };
+              })
+          );
+          const claimable = new Set(claimInfo.filter((c) => c.leaderHex === ZERO_LEADER).map((c) => c.orgId.toString()));
+          filtered = found.filter((r) => r.type === 'org' && r.orgId !== undefined && claimable.has(r.orgId.toString()));
         }
 
         // Nearby-first sorting (distance was computed in the provider)

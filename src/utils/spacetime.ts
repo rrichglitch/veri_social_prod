@@ -1,7 +1,9 @@
-import { DbConnection, tables } from '../module_bindings';
+import { DbConnection } from '../module_bindings';
 import { Identity, Timestamp } from 'spacetimedb';
 import { SPACETIMEDB_HOST, SPACETIMEDB_MODULE, IMAGES_RELAY_URL, DIDIT_RELAY_URL } from '../config';
 import { getOAuthSession } from './oauthSession';
+import { getProfileSnapshot, getOwnProfileRow, getTodayPostCount, getMyFriendsList, getMyOrgsList, getMyPostsList, getMyOrgMembersList, getMyStories, fetchProfileStories, setClientDb } from './clientData';
+import { preloadProfile, preloadOwnProfile } from './clientData';
 
 let dbConnection: DbConnection | null = null;
 let subscriptionPromise: Promise<void> | null = null;
@@ -49,6 +51,7 @@ export async function connectToSpacetimeDB(_email: string, token?: string): Prom
         dbConnection = null;
         subscriptionPromise = null;
         currentToken = undefined;
+        setClientDb(null);
       })
       .onConnectError((_ctx, err) => {
         console.error('Error connecting to SpacetimeDB:', err);
@@ -62,6 +65,7 @@ export async function connectToSpacetimeDB(_email: string, token?: string): Prom
     }
 
     dbConnection = await builder.build();
+    setClientDb(dbConnection);
 
     if (isAnonymous) {
       subscriptionPromise = subscribeAnonymous();
@@ -81,8 +85,8 @@ export async function connectToSpacetimeDB(_email: string, token?: string): Prom
 
 async function subscribeAnonymous(): Promise<void> {
   if (!dbConnection) return;
-  
-  console.log('Subscribing anonymously...');
+
+  console.log('Subscribing anonymously (no tables — everything via RPC)...');
   return new Promise((resolve, reject) => {
     try {
       dbConnection!.subscriptionBuilder()
@@ -94,9 +98,7 @@ async function subscribeAnonymous(): Promise<void> {
           console.error('Anonymous subscription error:', ctx.event);
           reject(new Error('Subscription failed'));
         })
-        .subscribe([
-          tables.user_profile,
-        ]);
+        .subscribe([]);
     } catch (e) {
       console.error('Anonymous subscription error:', e);
       reject(e);
@@ -106,10 +108,14 @@ async function subscribeAnonymous(): Promise<void> {
 
 async function subscribeToTables(): Promise<void> {
   if (!dbConnection) return;
-  
-  console.log('Subscribing to tables...');
+
+  console.log('Subscribing to per-user views...');
   return new Promise((resolve, reject) => {
     try {
+      // Scoped data layer (2026-08-31): ONLY per-subscriber views. No full
+      // tables (user_profile/organization/friendship/following/story_post/
+      // story_media/friend_request/gallery_photo) — those no longer ship to
+      // clients. Everything else arrives on demand via the client_* RPCs.
       dbConnection!.subscriptionBuilder()
         .onApplied(() => {
           console.log('Subscription applied');
@@ -120,18 +126,19 @@ async function subscribeToTables(): Promise<void> {
           reject(new Error('Subscription failed'));
         })
         .subscribe([
-          tables.user_profile,
-          tables.following,
-          tables.story_post,
-          tables.story_media,
-          tables.my_feed,
-          tables.friend_request,
-          tables.friendship,
+          'SELECT * FROM my_own_profile',
+          'SELECT * FROM my_friendships',
+          'SELECT * FROM my_following',
+          'SELECT * FROM my_friend_requests',
+          'SELECT * FROM my_orgs',
+          'SELECT * FROM my_org_members',
+          'SELECT * FROM my_org_requests',
+          'SELECT * FROM my_story',
+          'SELECT * FROM my_posts',
+          'SELECT * FROM my_gallery',
+          'SELECT * FROM my_feed',
           'SELECT * FROM my_notifications',
           'SELECT * FROM my_messages',
-          tables.organization,
-          tables.organization_member,
-          tables.gallery_photo,
           'SELECT * FROM my_search_results',
           'SELECT * FROM my_search_allowance',
           'SELECT * FROM my_pro_subscription',
@@ -154,6 +161,7 @@ export function disconnectFromSpacetimeDB() {
     dbConnection = null;
     subscriptionPromise = null;
   }
+  setClientDb(null);
 }
 
 export async function checkProfileExistsByEmail(email: string): Promise<boolean> {
@@ -215,41 +223,52 @@ function rowFromProcedure(r: any): ProfileLookupRow | null {
   };
 }
 
-// Sync read of the caller's own profile row from the local subscription
-// cache — NO procedure RPC. Own pages (/me, /home) use this on mount so
-// navigation renders instantly; the procedure path stays for other users'
-// profiles and for post-payment polling.
-export function getProfileRowByEmail(email: string): ProfileLookupRow | null {
+// Sync read of the caller's OWN profile row from the my_own_profile view —
+// NO procedure RPC, no full-table subscription. Own pages (/me, /home) use
+// this on mount so navigation renders instantly.
+export function getProfileRowByEmail(_email: string): ProfileLookupRow | null {
   if (!dbConnection) {
     return null;
   }
   try {
-    const se = sanitizeEmail(email);
-    for (const p of dbConnection.db.user_profile.iter()) {
-      if (p.email === se) {
-        return {
-          identity: { toHexString: () => p.identity.toHexString() },
-          email: p.email,
-          fullName: p.fullName,
-          city: p.city,
-          description: p.description,
-          profilePicture: p.profilePicture || '',
-          profilePictureSmall: (p as any).profilePictureSmall || '',
-          profilePictureUrl: (p as any).profilePictureUrl || '',
-          locationLat: p.locationLat ?? undefined,
-          locationLng: p.locationLng ?? undefined,
-          locationPrecision: p.locationPrecision,
-          gender: p.gender ?? undefined,
-          age: p.age ?? undefined,
-          hideFriends: !!p.hideFriends,
-          disabled: !!p.disabled,
-          createdAtMicros: p.createdAt ? BigInt(p.createdAt.microsSinceUnixEpoch) : undefined,
-          isPro: !!p.isPro,
-        };
-      }
+    for (const p of dbConnection.db.my_own_profile.iter()) {
+      const row = {
+        identity: { toHexString: () => p.identity.toHexString() },
+        email: p.email,
+        fullName: p.fullName,
+        city: p.city,
+        description: p.description,
+        profilePicture: p.profilePicture || '',
+        profilePictureSmall: p.profilePictureSmall || '',
+        profilePictureUrl: p.profilePictureUrl || '',
+        locationLat: p.locationLat ?? undefined,
+        locationLng: p.locationLng ?? undefined,
+        locationPrecision: p.locationPrecision,
+        gender: p.gender ?? undefined,
+        age: p.age ?? undefined,
+        hideFriends: !!p.hideFriends,
+        disabled: !!p.disabled,
+        createdAtMicros: p.createdAt ? BigInt(p.createdAt.microsSinceUnixEpoch) : undefined,
+        isPro: !!p.isPro,
+      };
+      // OWN tier: the signed-in user's top info INCLUDING pictures is
+      // always cached (pinned, never evicted).
+      preloadOwnProfile(row.identity.toHexString(), {
+        fullName: row.fullName,
+        picture: row.profilePictureSmall || row.profilePicture,
+        fullPicture: row.profilePictureUrl || row.profilePicture,
+        city: row.city,
+        description: row.description,
+        gender: row.gender,
+        age: row.age,
+        hideFriends: row.hideFriends,
+        createdAtMicros: row.createdAtMicros,
+        isPro: row.isPro,
+      });
+      return row;
     }
   } catch {
-    // cache not ready — treat as not found
+    // view not ready — treat as not found
   }
   return null;
 }
@@ -468,15 +487,149 @@ export async function getProfileByIdentity(identity: string): Promise<ProfileLoo
   }
 }
 
+// Sync resolution of ANY profile from the merged client data layer
+// (memory tier → view-tier embedded snapshots → fetched cache) — NO RPC, no
+// full-table subscription. ProfilePage lazy-inits from this; the procedure
+// refresh keeps it fresh after.
+export function getProfileByIdentitySync(identityHex: string): ProfileLookupRow | null {
+  if (!dbConnection) return null;
+  const snap = getProfileSnapshot(identityHex);
+  if (!snap) return null;
+  return {
+    identity: { toHexString: () => identityHex },
+    email: '',
+    fullName: snap.fullName,
+    city: snap.city,
+    description: snap.description,
+    profilePicture: snap.picture,
+    profilePictureSmall: snap.picture,
+    profilePictureUrl: snap.fullPicture || '',
+    locationPrecision: 'off',
+    gender: snap.gender,
+    age: snap.age,
+    hideFriends: !!snap.hideFriends,
+    disabled: false,
+    createdAtMicros: snap.createdAtMicros as bigint | undefined,
+    isPro: !!snap.isPro,
+  };
+}
+
+// ─── On-demand RPC wrappers for OTHER people's data (scoped data layer) ─────
+
+export async function callProfileStories(profileIdentityHex: string): Promise<any[]> {
+  if (!dbConnection) return [];
+  try {
+    const r = await dbConnection.procedures.getProfileStories({ profileOwnerIdentityHex: profileIdentityHex });
+    return (r?.stories ?? []).map((s: any) => ({
+      id: s.id,
+      posterIdentity: s.posterIdentityHex,
+      posterName: s.posterName,
+      posterPicture: s.posterPicture,
+      content: s.content,
+      mediaData: s.mediaData,
+      mediaTypes: s.mediaTypes,
+      mediaUrl: s.mediaUrl,
+      createdAt: new Date(Number(s.createdAtMicros) / 1000),
+      actingAsOrgId: s.actingAsOrgId,
+      actingAsOrgName: s.actingAsOrgName,
+      actingAsOrgPicture: s.actingAsOrgPicture,
+    }));
+  } catch (e) {
+    console.error('Error fetching profile stories:', e);
+    return [];
+  }
+}
+
+export async function callProfileFriends(identityHex: string): Promise<Array<{ identity: string; fullName: string; picture: string; city: string }>> {
+  if (!dbConnection) return [];
+  try {
+    const r = await dbConnection.procedures.getProfileFriends({ targetIdentityHex: identityHex });
+    return (r?.friends ?? []).map((f: any) => ({
+      identity: f.identityHex,
+      fullName: f.fullName,
+      picture: f.picture,
+      city: f.city,
+    }));
+  } catch (e) {
+    console.error('Error fetching profile friends:', e);
+    return [];
+  }
+}
+
+export async function callOrgMembers(orgId: bigint): Promise<Array<{ identity: string; fullName: string; picture: string; city: string; role: string }>> {
+  if (!dbConnection) return [];
+  try {
+    const r = await dbConnection.procedures.getOrgMembers({ orgId });
+    return (r?.members ?? []).map((m: any) => ({
+      identity: m.identityHex,
+      fullName: m.fullName,
+      picture: m.picture,
+      city: m.city,
+      role: m.role,
+    }));
+  } catch (e) {
+    console.error('Error fetching org members:', e);
+    return [];
+  }
+}
+
+export async function callProfileGallery(ownerIdentityHex: string): Promise<any[]> {
+  if (!dbConnection) return [];
+  try {
+    const r = await dbConnection.procedures.getProfileGallery({ ownerIdentityHex });
+    return (r?.photos ?? []).map((g: any) => ({
+      id: g.id,
+      s3Key: g.s3Key,
+      url: g.url,
+      bytes: g.bytes,
+      createdAt: new Date(Number(g.createdAtMicros) / 1000),
+    }));
+  } catch (e) {
+    console.error('Error fetching profile gallery:', e);
+    return [];
+  }
+}
+
+export async function callOrgProfile(orgId: bigint): Promise<any | null> {
+  if (!dbConnection) return null;
+  try {
+    const r = await dbConnection.procedures.getOrgProfile({ orgId });
+    if (!r?.found) return null;
+    return {
+      id: r.orgId,
+      name: r.name,
+      picture: r.pictureSmall || r.picture,
+      pictureSmall: r.pictureSmall,
+      pictureUrl: r.pictureUrl,
+      city: r.city,
+      description: r.description,
+      createdAt: new Date(Number(r.createdAtMicros) / 1000),
+      gender: r.gender,
+      hideMembers: !!r.hideMembers,
+      isPro: !!r.isPro,
+      leaderIdentityHex: r.leaderIdentityHex,
+      locationLat: r.locationLat ?? undefined,
+      locationLng: r.locationLng ?? undefined,
+      locationPrecision: r.locationPrecision,
+    };
+  } catch (e) {
+    console.error('Error fetching org profile:', e);
+    return null;
+  }
+}
+
 export async function checkIsFollowing(targetIdentity: string, currentIdentityHex: string): Promise<boolean> {
+  // MY follow edges now live in the my_following view (scoped data layer).
+  // Only valid for the signed-in identity's own relation; other-direction
+  // calls are not made anywhere.
   if (!dbConnection || !currentIdentityHex) {
     return false;
   }
-
+  const me = getOwnProfileRow()?.identity.toHexString();
+  if (me && currentIdentityHex !== me) return false;
   try {
-    for (const f of dbConnection.db.following.iter()) {
-      if (f.followerIdentity.toHexString() === currentIdentityHex && 
-          f.followingIdentity.toHexString() === targetIdentity) {
+    for (const f of dbConnection.db.my_following.iter()) {
+      if (f.followingIdentity.toHexString() === targetIdentity) {
         return true;
       }
     }
@@ -490,30 +643,6 @@ export async function checkIsFollowing(targetIdentity: string, currentIdentityHe
 // Deterministic SpacetimeDB identity for an organization account (0x4f + orgId)
 export function orgAccountIdentityHex(orgId: bigint): string {
   return '4f' + orgId.toString(16).padStart(62, '0');
-}
-
-// identity hex -> { name, picture } for BOTH individual profiles and org
-// accounts. Bandwidth design: picture = the 10KB THUMBNAIL (everything that
-// renders at avatar size); fullPicture = the S3 URL (or legacy base64) used
-// ONLY by swipe backgrounds and the profile-pic zoom.
-export function buildAccountCache(): Map<string, { name: string; picture: string; fullPicture?: string }> {
-  const cache = new Map<string, { name: string; picture: string; fullPicture?: string }>();
-  if (!dbConnection) return cache;
-  for (const profile of dbConnection.db.user_profile.iter()) {
-    cache.set(profile.identity.toHexString(), {
-      name: profile.fullName,
-      picture: (profile as any).profilePictureSmall || profile.profilePicture || '',
-      fullPicture: (profile as any).profilePictureUrl || profile.profilePicture || '',
-    });
-  }
-  for (const org of dbConnection.db.organization.iter()) {
-    cache.set(orgAccountIdentityHex(org.id), {
-      name: org.name,
-      picture: (org as any).pictureSmall || org.picture || '',
-      fullPicture: (org as any).pictureUrl || org.picture || '',
-    });
-  }
-  return cache;
 }
 
 export async function followUser(targetIdentity: string, actingAsOrgId?: bigint): Promise<void> {
@@ -574,76 +703,15 @@ export async function createStoryPost(
 // Local pre-check for the daily post budget (mirrors the backend gate so the
 // user gets a friendly message instead of a 530). Counts the caller's story
 // posts created since the start of the UTC day.
+// Scoped data layer: counts the caller's posts today from the my_posts view.
 export function getTodayStoryPostCount(posterHex: string): number {
-  const DAY_MICROS = 86_400_000_000;
-  const todayStart = Math.floor((Date.now() * 1000) / DAY_MICROS) * DAY_MICROS;
-  let n = 0;
-  if (!dbConnection) return n;
-  for (const s of dbConnection.db.story_post.iter()) {
-    if (s.posterIdentity.toHexString() === posterHex && Number(s.createdAt) >= todayStart) n++;
-  }
-  return n;
+  return getTodayPostCount(posterHex);
 }
 
+// Stories ON a profile — fetched on demand (scoped data layer); cached in
+// clientData and invalidated via refreshFetchedStories after posting/deleting.
 export async function getStoriesForProfile(profileOwnerIdentity: string) {
-  if (!dbConnection) {
-    return [];
-  }
-
-  try {
-    const stories: any[] = [];
-    const posterIdentities = new Set<string>();
-    
-    for (const post of dbConnection.db.story_post.iter()) {
-      if (post.profileOwnerIdentity.toHexString() === profileOwnerIdentity) {
-        posterIdentities.add(post.posterIdentity.toHexString());
-      }
-    }
-    
-    const profileCache = buildAccountCache();
-    const mediaByPost = buildStoryMediaMap();
-
-    for (const post of dbConnection.db.story_post.iter()) {
-      if (post.profileOwnerIdentity.toHexString() === profileOwnerIdentity) {
-        const posterHex = post.posterIdentity.toHexString();
-        const poster = profileCache.get(posterHex);
-        const sm = mediaByPost.get(storyMediaKey(post.posterIdentity, post.createdAt));
-        stories.push({
-          id: post.id,
-          content: post.content,
-          mediaData: post.mediaData,
-          mediaTypes: post.mediaTypes,
-          mediaUrl: sm?.mediaUrl || '',
-          createdAt: post.createdAt.toDate(),
-          posterIdentity: posterHex,
-          posterName: poster?.name || 'Unknown',
-          posterPicture: poster?.picture || '',
-        });
-      }
-    }
-    return stories.sort((a, b) => {
-      const aTime = a.createdAt as unknown as bigint;
-      const bTime = b.createdAt as unknown as bigint;
-      return aTime > bTime ? -1 : aTime < bTime ? 1 : 0;
-    });
-  } catch (e) {
-    console.error('Error getting stories:', e);
-    return [];
-  }
-}
-
-// story_media links are keyed by (poster_identity, created_at) — same pair
-// that story_post rows carry. Builds a lookup map for the current cache.
-function storyMediaKey(posterIdentity: any, createdAt: any): string {
-  return `${posterIdentity.toHexString()}:${(createdAt as any)?.microsSinceUnixEpoch?.toString?.() || String(createdAt)}`;
-}
-function buildStoryMediaMap(): Map<string, any> {
-  const map = new Map<string, any>();
-  if (!dbConnection) return map;
-  for (const m of dbConnection.db.story_media.iter()) {
-    map.set(storyMediaKey(m.posterIdentity, m.createdAt), m);
-  }
-  return map;
+  return fetchProfileStories(profileOwnerIdentity);
 }
 
 // Uploads story media through the images relay (gallery rules: 500KB cap,
@@ -674,82 +742,16 @@ export async function uploadStoryMedia(file: Blob): Promise<{ s3Key: string; url
   }
 }
 
-export async function getMyStoryPosts(currentIdentityHex: string) {
-  if (!dbConnection) {
-    return [];
-  }
-
-  try {
-    const stories: any[] = [];
-    
-    const profileCache = buildAccountCache();
-    const mediaByPost = buildStoryMediaMap();
-    
-    for (const post of dbConnection.db.story_post.iter()) {
-      if (post.profileOwnerIdentity.toHexString() === currentIdentityHex) {
-        const posterHex = post.posterIdentity.toHexString();
-        const poster = profileCache.get(posterHex);
-        const sm = mediaByPost.get(storyMediaKey(post.posterIdentity, post.createdAt));
-        stories.push({
-          id: post.id,
-          content: post.content,
-          mediaData: post.mediaData,
-          mediaTypes: post.mediaTypes,
-          mediaUrl: sm?.mediaUrl || '',
-          createdAt: post.createdAt.toDate(),
-          posterIdentity: posterHex,
-          posterName: poster?.name || 'Unknown',
-          posterPicture: poster?.picture || '',
-          profileOwnerIdentity: currentIdentityHex,
-        });
-      }
-    }
-    return stories.sort((a, b) => {
-      const aTime = a.createdAt as unknown as bigint;
-      const bTime = b.createdAt as unknown as bigint;
-      return aTime > bTime ? -1 : aTime < bTime ? 1 : 0;
-    });
-  } catch (e) {
-    console.error('Error getting my story posts:', e);
-    return [];
-  }
+// Posts ON my profile — the my_story view (per-subscriber, poster snapshot +
+// S3 media URL embedded). Signature kept for callers.
+export async function getMyStoryPosts(_currentIdentityHex: string) {
+  return getMyStories();
 }
 
-export async function getMyPosts(currentIdentityHex: string) {
-  if (!dbConnection) {
-    return [];
-  }
-
-  try {
-    const posts: any[] = [];
-    
-    const profileCache = buildAccountCache();
-    
-    for (const post of dbConnection.db.story_post.iter()) {
-      if (post.posterIdentity.toHexString() === currentIdentityHex) {
-        const ownerHex = post.profileOwnerIdentity.toHexString();
-        const owner = profileCache.get(ownerHex);
-        posts.push({
-          id: post.id,
-          content: post.content,
-          mediaData: post.mediaData,
-          mediaTypes: post.mediaTypes,
-          createdAt: post.createdAt.toDate(),
-          profileOwnerIdentity: ownerHex,
-          profileOwnerName: owner?.name || 'Unknown',
-          profileOwnerPicture: owner?.picture || '',
-        });
-      }
-    }
-    return posts.sort((a, b) => {
-      const aTime = a.createdAt as unknown as bigint;
-      const bTime = b.createdAt as unknown as bigint;
-      return aTime > bTime ? -1 : aTime < bTime ? 1 : 0;
-    });
-  } catch (e) {
-    console.error('Error getting my posts:', e);
-    return [];
-  }
+// Posts BY me — the my_posts view (per-subscriber, owner snapshot + S3 media
+// URL embedded). Signature kept for callers.
+export async function getMyPosts(_currentIdentityHex: string) {
+  return getMyPostsList();
 }
 
 export async function deleteStoryPost(postId: bigint): Promise<void> {
@@ -762,8 +764,6 @@ export async function deleteStoryPost(postId: bigint): Promise<void> {
   });
 }
 
-const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
-
 const PAGE_SIZE = 20;
 
 export interface FeedStory {
@@ -773,6 +773,7 @@ export interface FeedStory {
   content: string;
   mediaData: string;
   mediaTypes: string;
+  mediaUrl?: string;
   createdAt: Date;
   posterName: string;
   posterPicture: string;
@@ -807,6 +808,20 @@ export function getMyFeedStories(orderOldToNew: boolean = true): FeedStory[] {
   try {
     const stories: FeedStory[] = [];
     for (const row of dbConnection.db.my_feed.iter()) {
+      const posterHex = row.posterIdentity.toHexString();
+      const ownerHex = row.profileOwnerIdentity.toHexString();
+      preloadProfile(posterHex, {
+        fullName: row.posterName,
+        picture: row.posterPicture,
+        city: '',
+        description: '',
+      });
+      preloadProfile(ownerHex, {
+        fullName: row.profileOwnerName,
+        picture: row.profileOwnerPicture,
+        city: '',
+        description: '',
+      });
       stories.push({
         id: row.id,
         profileOwnerIdentity: row.profileOwnerIdentity,
@@ -814,10 +829,11 @@ export function getMyFeedStories(orderOldToNew: boolean = true): FeedStory[] {
         content: row.content,
         mediaData: row.mediaData,
         mediaTypes: row.mediaTypes,
+        mediaUrl: row.mediaUrl || '',
         createdAt: row.createdAt.toDate(),
         posterName: row.posterName,
         posterPicture: row.posterPicture,
-        profileOwnerIdentityHex: row.profileOwnerIdentity.toHexString(),
+        profileOwnerIdentityHex: ownerHex,
         profileOwnerName: row.profileOwnerName,
         profileOwnerPicture: row.profileOwnerPicture,
       });
@@ -835,80 +851,6 @@ export function getMyFeedStories(orderOldToNew: boolean = true): FeedStory[] {
     console.error('Error getting feed stories:', e);
     return [];
   }
-}
-
-// Feed for an organization account: posts on profiles the org follows + posts on the org's own story
-export function getOrgFeedStories(orgIdentity: string, orderOldToNew: boolean = true): FeedStory[] {
-  if (!dbConnection) return [];
-  try {
-    const followingSet = new Set<string>();
-    for (const f of dbConnection.db.following.iter()) {
-      if (f.followerIdentity.toHexString() === orgIdentity) {
-        followingSet.add(f.followingIdentity.toHexString());
-      }
-    }
-    const accounts = buildAccountCache();
-    const orgCache = new Map<bigint, { name: string; picture: string }>();
-    for (const o of dbConnection.db.organization.iter()) {
-      orgCache.set(o.id, { name: o.name, picture: (o as any).pictureSmall || o.picture || '' });
-    }
-    const stories: FeedStory[] = [];
-    for (const post of dbConnection.db.story_post.iter()) {
-      const ownerHex = post.profileOwnerIdentity.toHexString();
-      // feed = posts on followed profiles + the org's own story
-      if (!followingSet.has(ownerHex) && ownerHex !== orgIdentity) continue;
-      if (post.posterIdentity.toHexString() === ownerHex) continue;
-      // Poster display: posts made by an org show the org
-      let posterName = 'Unknown';
-      let posterPicture = '';
-      if (post.actingAsOrgId !== undefined) {
-        const o = orgCache.get(post.actingAsOrgId);
-        if (o) { posterName = o.name; posterPicture = o.picture; }
-      } else {
-        const poster = accounts.get(post.posterIdentity.toHexString());
-        if (poster) { posterName = poster.name; posterPicture = poster.picture; }
-      }
-      const owner = accounts.get(ownerHex);
-      stories.push({
-        id: post.id,
-        profileOwnerIdentity: post.profileOwnerIdentity,
-        posterIdentity: post.posterIdentity,
-        content: post.content,
-        mediaData: post.mediaData,
-        mediaTypes: post.mediaTypes,
-        createdAt: post.createdAt.toDate(),
-        posterName,
-        posterPicture,
-        profileOwnerIdentityHex: ownerHex,
-        profileOwnerName: owner?.name || 'Unknown',
-        profileOwnerPicture: owner?.picture || '',
-      });
-    }
-    return stories.sort((a, b) => {
-      const aTime = a.createdAt.getTime();
-      const bTime = b.createdAt.getTime();
-      if (orderOldToNew) return aTime > bTime ? 1 : aTime < bTime ? -1 : 0;
-      return aTime > bTime ? -1 : aTime < bTime ? 1 : 0;
-    });
-  } catch (e) {
-    console.error('Error getting org feed stories:', e);
-    return [];
-  }
-}
-
-export function getPaginatedOrgFeedStories(
-  orgIdentity: string,
-  orderOldToNew: boolean = true,
-  page: number = 0,
-  perPage: number = PAGE_SIZE
-): { stories: FeedStory[]; hasMore: boolean } {
-  const allStories = getOrgFeedStories(orgIdentity, orderOldToNew);
-  const start = page * perPage;
-  const end = start + perPage;
-  return {
-    stories: allStories.slice(start, end),
-    hasMore: end < allStories.length,
-  };
 }
 
 export function getPaginatedFeedStories(
@@ -939,85 +881,6 @@ export async function setFeedPosition(_currentIdentityHex: string, lastReadAt: D
   await dbConnection.reducers.updateFeedScrollPosition({
     lastReadAt: Timestamp.fromDate(lastReadAt),
   });
-}
-
-export async function getFollowedStoriesWithOptions(
-  currentIdentityHex: string,
-  orderOldToNew: boolean,
-  startFromTimestamp?: Date
-) {
-  if (!dbConnection) {
-    return [];
-  }
-
-  const cutoffDate = new Date(Date.now() - TWO_YEARS_MS);
-
-  try {
-    const followedIdentities: string[] = [];
-    for (const f of dbConnection.db.following.iter()) {
-      if (f.followerIdentity.toHexString() === currentIdentityHex) {
-        followedIdentities.push(f.followingIdentity.toHexString());
-      }
-    }
-
-    if (followedIdentities.length === 0) {
-      return [];
-    }
-
-    const profileCache = buildAccountCache();
-
-    const stories: any[] = [];
-    for (const post of dbConnection.db.story_post.iter()) {
-      const profileOwnerHex = post.profileOwnerIdentity.toHexString();
-      const posterHex = post.posterIdentity.toHexString();
-      const postDate = post.createdAt.toDate();
-      
-      if (followedIdentities.includes(profileOwnerHex) && posterHex !== profileOwnerHex) {
-        if (postDate < cutoffDate) {
-          continue;
-        }
-        if (startFromTimestamp) {
-          if (orderOldToNew && postDate < startFromTimestamp) {
-            continue;
-          }
-          if (!orderOldToNew && postDate > startFromTimestamp) {
-            continue;
-          }
-        }
-        const poster = profileCache.get(posterHex);
-        const profileOwner = profileCache.get(profileOwnerHex);
-        stories.push({
-          id: post.id,
-          content: post.content,
-          mediaData: post.mediaData,
-          mediaTypes: post.mediaTypes,
-          createdAt: postDate,
-          posterIdentity: posterHex,
-          posterName: poster?.name || 'Unknown',
-          posterPicture: poster?.picture || '',
-          profileOwnerIdentity: profileOwnerHex,
-          profileOwnerName: profileOwner?.name || 'Unknown',
-          profileOwnerPicture: profileOwner?.picture || '',
-        });
-      }
-    }
-
-    return stories.sort((a, b) => {
-      const aTime = a.createdAt as unknown as bigint;
-      const bTime = b.createdAt as unknown as bigint;
-      if (orderOldToNew) {
-        return aTime > bTime ? 1 : aTime < bTime ? -1 : 0;
-      }
-      return aTime > bTime ? -1 : aTime < bTime ? 1 : 0;
-    });
-  } catch (e) {
-    console.error('Error getting followed stories:', e);
-    return [];
-  }
-}
-
-export async function getFollowedStories(currentIdentityHex: string) {
-  return getFollowedStoriesWithOptions(currentIdentityHex, false);
 }
 
 // ─── Organization APIs ───────────────────────────────────────────
@@ -1056,114 +919,41 @@ export async function updateOrganization(
   });
 }
 
-export function getMyOrganizations(identity: string) {
-  if (!dbConnection) return [];
-  const orgs: any[] = [];
-  const orgCache = new Map<bigint, any>();
-  for (const org of dbConnection.db.organization.iter()) {
-    orgCache.set(org.id, org);
-  }
-  // organization_member is ROLES ONLY (leader/co-leader) — membership is a
-  // friendship row with the org's account identity. Role rows still imply
-  // membership (a leader/co-leader is by definition a member).
-  const seen = new Set<string>();
-  for (const f of dbConnection.db.friendship.iter()) {
-    const a = f.userA.toHexString();
-    const b = f.userB.toHexString();
-    const other = a === identity ? b : b === identity ? a : null;
-    if (!other) continue;
-    if (!(other.length === 64 && other.startsWith('4f'))) continue;
-    const orgId = BigInt('0x' + other.slice(2));
-    const org = orgCache.get(orgId);
-    if (!org || seen.has(other)) continue;
-    seen.add(other);
-    orgs.push({ ...org, picture: (org as any).pictureSmall || org.picture || '', role: getOrgRole(orgId, identity) });
-  }
-  // Role rows: orgs where I'm leader/co-leader but not (yet) a friend (should
-  // not normally happen — role rows are created through membership).
-  for (const m of dbConnection.db.organization_member.iter()) {
-    if (m.memberIdentity.toHexString() === identity) {
-      const org = orgCache.get(m.orgId);
-      const orgHex = orgAccountIdentityHex(m.orgId);
-      if (org && !seen.has(orgHex)) {
-        seen.add(orgHex);
-        orgs.push({ ...org, picture: (org as any).pictureSmall || org.picture || '', role: m.role });
-      }
-    }
-  }
-  return orgs;
+// My organizations — the my_orgs view (per-subscriber, includes my role).
+export function getMyOrganizations(_identity: string) {
+  return getMyOrgsList();
 }
 
-// Roles live in organization_member (leader/co-leader); a plain member has no
-// row there, so the default role is 'member'.
-function getOrgRole(orgId: bigint, identity: string): string {
-  if (!dbConnection) return 'member';
-  for (const m of dbConnection.db.organization_member.iter()) {
-    if (m.orgId === orgId && m.memberIdentity.toHexString() === identity) {
-      if (m.role === 'leader' || m.role === 'co_leader') return m.role;
-    }
-  }
-  return 'member';
-}
-
+// Sync org row for orgs I belong to (my_orgs view). Other orgs: null — call
+// fetchOrgProfile (RPC) for the full row on demand.
 export function getOrganizationById(orgId: bigint) {
   if (!dbConnection) return null;
-  for (const org of dbConnection.db.organization.iter()) {
-    if (org.id === orgId) return org;
+  for (const o of dbConnection.db.my_orgs.iter()) {
+    if (o.orgId === orgId) {
+      return {
+        id: o.orgId,
+        name: o.name,
+        picture: o.picture,
+        pictureSmall: o.pictureSmall,
+        pictureUrl: o.pictureUrl,
+        city: o.city,
+        description: o.description,
+        createdAt: o.createdAt.toDate(),
+        gender: o.gender,
+        hideMembers: o.hideMembers,
+        isPro: o.isPro,
+        leaderIdentity: { toHexString: () => o.leaderIdentity.toHexString() },
+      };
+    }
   }
   return null;
 }
 
+// Members (with roles) of orgs the caller belongs to — the my_org_members
+// view. Viewing OTHER orgs' members uses fetchOrgMembers (RPC).
 export function getOrganizationMembers(orgId: bigint) {
   if (!dbConnection) return [];
-  const members: any[] = [];
-  const profileCache = buildAccountCache();
-  const cities = new Map<string, string>();
-  for (const p of dbConnection.db.user_profile.iter()) {
-    cities.set(p.identity.toHexString(), p.city || '');
-  }
-  // Members ARE friends of the org's account identity: iterate FRIENDSHIP,
-  // not organization_member (that table is ROLES ONLY). Role overlay for
-  // leader/co-leader comes from organization_member rows.
-  const orgHex = orgAccountIdentityHex(orgId);
-  const seen = new Set<string>();
-  for (const f of dbConnection.db.friendship.iter()) {
-    const a = f.userA.toHexString();
-    const b = f.userB.toHexString();
-    const other = a === orgHex ? b : b === orgHex ? a : null;
-    if (!other) continue;
-    if (seen.has(other)) continue;
-    seen.add(other);
-    const profile = profileCache.get(other);
-    members.push({
-      identity: other,
-      role: getOrgRole(orgId, other),
-      fullName: profile?.name || 'Unknown',
-      picture: profile?.picture || '',
-      city: cities.get(other) || '',
-      joinedAt: f.createdAt?.toDate() ?? new Date(),
-    });
-  }
-  // Role rows imply membership — include any leader/co-leader not already in
-  // the friendship list (legacy orgs created before membership became
-  // friendship may only have the role row).
-  for (const m of dbConnection.db.organization_member.iter()) {
-    if (m.orgId === orgId && (m.role === 'leader' || m.role === 'co_leader')) {
-      const hex = m.memberIdentity.toHexString();
-      if (seen.has(hex)) continue;
-      seen.add(hex);
-      const profile = profileCache.get(hex);
-      members.push({
-        identity: hex,
-        role: m.role,
-        fullName: profile?.name || 'Unknown',
-        picture: profile?.picture || '',
-        city: cities.get(hex) || '',
-        joinedAt: m.joinedAt?.toDate() ?? new Date(),
-      });
-    }
-  }
-  return members;
+  return getMyOrgMembersList().filter((m: any) => m.orgId === orgId);
 }
 
 export async function acceptOrgMember(requestId: bigint): Promise<void> {
@@ -1255,23 +1045,20 @@ export async function unfriend(targetIdentity: string, actingAsOrgId?: bigint): 
   });
 }
 
-export function checkIsFriend(currentIdentityHex: string, otherIdentity: string): boolean {
+export function checkIsFriend(_currentIdentityHex: string, otherIdentity: string): boolean {
+  // MY friendships live in the my_friendships view (edge is symmetric).
   if (!dbConnection) return false;
-  for (const f of dbConnection.db.friendship.iter()) {
-    const a = f.userA.toHexString();
-    const b = f.userB.toHexString();
-    if ((a === currentIdentityHex && b === otherIdentity) || 
-        (a === otherIdentity && b === currentIdentityHex)) {
-      return true;
-    }
+  for (const f of dbConnection.db.my_friendships.iter()) {
+    if (f.friendIdentity.toHexString() === otherIdentity) return true;
   }
   return false;
 }
 
 export function getFriendRequestStatus(fromIdentity: string, toIdentity: string): string | null {
+  // MY requests live in the my_friend_requests view (either side).
   if (!dbConnection) return null;
-  for (const r of dbConnection.db.friend_request.iter()) {
-    if (r.fromIdentity.toHexString() === fromIdentity && 
+  for (const r of dbConnection.db.my_friend_requests.iter()) {
+    if (r.fromIdentity.toHexString() === fromIdentity &&
         r.toIdentity.toHexString() === toIdentity) {
       return r.status === 'pending' ? 'pending' : null;
     }
@@ -1279,10 +1066,11 @@ export function getFriendRequestStatus(fromIdentity: string, toIdentity: string)
   return null;
 }
 
-export function getOrgMemberRequestStatus(orgId: bigint, fromIdentity: string): string | null {
+export function getOrgMemberRequestStatus(orgId: bigint, _fromIdentity: string): string | null {
+  // MY org join requests live in the my_org_requests view.
   if (!dbConnection) return null;
-  for (const r of dbConnection.db.org_member_request.iter()) {
-    if (r.orgId === orgId && r.fromIdentity.toHexString() === fromIdentity) {
+  for (const r of dbConnection.db.my_org_requests.iter()) {
+    if (r.orgId === orgId) {
       return r.status;
     }
   }
@@ -1344,16 +1132,15 @@ export function getDirectMessages(userA: string, userB: string) {
 export function getOrgMessages(orgId: bigint) {
   if (!dbConnection) return [];
   const msgs: any[] = [];
-  const profileCache = buildAccountCache();
   for (const m of dbConnection.db.my_messages.iter()) {
     if (m.orgId === orgId) {
       const senderHex = m.senderIdentity.toHexString();
-      const profile = profileCache.get(senderHex);
+      const snap = getProfileSnapshot(senderHex);
       msgs.push({
         id: m.id,
         senderIdentity: senderHex,
-        senderName: profile?.name || 'Unknown',
-        senderPicture: profile?.picture || '',
+        senderName: snap?.fullName || 'Unknown',
+        senderPicture: snap?.picture || '',
         content: m.content,
         createdAt: m.createdAt.toDate(),
       });
@@ -1362,40 +1149,19 @@ export function getOrgMessages(orgId: bigint) {
   return msgs.sort((a, b) => (a.id < b.id ? -1 : 1));
 }
 
-// All friends of an identity (both directions of the friendship table)
-export function getFriends(identity: string): { identity: string; name: string; picture: string; city: string }[] {
+// MY friends — the my_friendships view (per-subscriber, snapshot embedded).
+// Other users' friend lists are fetched on demand (fetchProfileFriends).
+export function getFriends(_identity: string): { identity: string; name: string; picture: string; city: string }[] {
   if (!dbConnection) return [];
-  const friendIds = new Set<string>();
-  for (const f of dbConnection.db.friendship.iter()) {
-    const a = f.userA.toHexString();
-    const b = f.userB.toHexString();
-    if (a === identity) friendIds.add(b);
-    else if (b === identity) friendIds.add(a);
-  }
-  const cache = buildAccountCache();
-  const cities = new Map<string, string>();
-  for (const p of dbConnection.db.user_profile.iter()) {
-    cities.set(p.identity.toHexString(), p.city || '');
-  }
-  const out: { identity: string; name: string; picture: string; city: string }[] = [];
-  for (const id of friendIds) {
-    const acc = cache.get(id);
-    out.push({ identity: id, name: acc?.name || 'Unknown', picture: acc?.picture || '', city: cities.get(id) || '' });
-  }
-  out.sort((a, b) => a.name.localeCompare(b.name));
-  return out;
+  return getMyFriendsList();
 }
 
 export function getFriendChats(identity: string) {
   if (!dbConnection) return [];
-  const friends = new Set<string>();
-  for (const f of dbConnection.db.friendship.iter()) {
-    const a = f.userA.toHexString();
-    const b = f.userB.toHexString();
-    if (a === identity) friends.add(b);
-    else if (b === identity) friends.add(a);
+  const friends = new Map<string, { fullName: string; picture: string }>();
+  for (const f of dbConnection.db.my_friendships.iter()) {
+    friends.set(f.friendIdentity.toHexString(), { fullName: f.friendName, picture: f.friendPicture });
   }
-  const profileCache = buildAccountCache();
   // Find latest message for each friend
   const latestMsg = new Map<string, number>();
   for (const m of dbConnection.db.my_messages.iter()) {
@@ -1411,13 +1177,13 @@ export function getFriendChats(identity: string) {
       }
     }
   }
-  return Array.from(friends)
+  return Array.from(friends.keys())
     .map(fid => {
-      const profile = profileCache.get(fid);
+      const profile = friends.get(fid)!;
       return {
         identity: fid,
-        fullName: profile?.name || 'Unknown',
-        picture: profile?.picture || '',
+        fullName: profile.fullName,
+        picture: profile.picture,
         lastMsgAt: latestMsg.get(fid) || 0,
       };
     })
@@ -1429,24 +1195,25 @@ export function getFriendChats(identity: string) {
 export function getNotifications(identity: string) {
   if (!dbConnection) return [];
   const notifs: any[] = [];
-  const profileCache = buildAccountCache();
   for (const n of dbConnection.db.my_notifications.iter()) {
-    if (n.recipientIdentity.toHexString() === identity) {
-      const fromHex = n.fromIdentity?.toHexString();
-      const fromProfile = fromHex ? profileCache.get(fromHex) : null;
-      notifs.push({
-        id: n.id,
-        type: n.type,
-        fromIdentity: fromHex,
-        fromName: fromProfile?.name || 'Someone',
-        fromPicture: fromProfile?.picture || '',
-        orgId: n.orgId,
-        message: n.message,
-        createdAt: n.createdAt.toDate(),
-        resolved: n.resolved,
-        referenceId: n.referenceId,
-      });
+    if (n.recipientIdentity.toHexString() !== identity) continue;
+    const fromHex = n.fromIdentity?.toHexString();
+    const snap = fromHex ? getProfileSnapshot(fromHex) : undefined;
+    if (fromHex && snap) {
+      preloadProfile(fromHex, { fullName: snap.fullName, picture: snap.picture, city: snap.city, description: '' });
     }
+    notifs.push({
+      id: n.id,
+      type: n.type,
+      fromIdentity: fromHex,
+      fromName: snap?.fullName || 'Someone',
+      fromPicture: snap?.picture || '',
+      orgId: n.orgId,
+      message: n.message,
+      createdAt: n.createdAt.toDate(),
+      resolved: n.resolved,
+      referenceId: n.referenceId,
+    });
   }
   return notifs.sort((a, b) => (a.id < b.id ? -1 : 1));
 }
@@ -1495,12 +1262,6 @@ export async function cancelProSubscription(): Promise<void> {
   await dbConnection.reducers.cancelProSubscription({});
 }
 
-export function isPro(identity: string): boolean {
-  if (!dbConnection) return false;
-  const p = dbConnection.db.user_profile.identity.find(Identity.fromString(identity));
-  return p?.isPro ?? false;
-}
-
 // One-time org claim fee rows for the current caller (my_org_claim_fee view).
 export function getMyOrgClaimFee(): any[] {
   if (!dbConnection) return [];
@@ -1517,28 +1278,26 @@ export function getMyOrgClaimFee(): any[] {
 
 export interface GalleryPhoto {
   id: bigint;
-  ownerIdentity: string;
+  ownerIdentity?: string;
   s3Key: string;
   url: string;
   bytes: number;
   createdAt: Date;
 }
 
-// All gallery photos for an identity, oldest first.
-export function getGallery(ownerIdentity: string): GalleryPhoto[] {
+// MY gallery photos from the my_gallery view (sync). Other users' galleries
+// are fetched on demand via clientData.fetchProfileGallery.
+export function getGallery(_ownerIdentity: string): GalleryPhoto[] {
   if (!dbConnection) return [];
   const photos: GalleryPhoto[] = [];
-  for (const g of dbConnection.db.gallery_photo.iter()) {
-    if (g.ownerIdentity.toHexString() === ownerIdentity) {
-      photos.push({
-        id: g.id,
-        ownerIdentity: g.ownerIdentity.toHexString(),
-        s3Key: g.s3Key,
-        url: g.url,
-        bytes: Number(g.bytes),
-        createdAt: g.createdAt.toDate(),
-      });
-    }
+  for (const g of dbConnection.db.my_gallery.iter()) {
+    photos.push({
+      id: g.id,
+      s3Key: g.s3Key,
+      url: g.url,
+      bytes: Number(g.bytes),
+      createdAt: g.createdAt.toDate(),
+    });
   }
   return photos.sort((a, b) => (a.createdAt.getTime() - b.createdAt.getTime()));
 }

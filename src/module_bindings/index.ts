@@ -88,9 +88,14 @@ import * as CanDeleteGalleryPhotoProcedure from "./can_delete_gallery_photo_proc
 import * as CheckDiditVerificationProcedure from "./check_didit_verification_procedure";
 import * as CreateVerifiedProfileProcedure from "./create_verified_profile_procedure";
 import * as GalleryUploadCountTodayProcedure from "./gallery_upload_count_today_procedure";
+import * as GetOrgMembersProcedure from "./get_org_members_procedure";
+import * as GetOrgProfileProcedure from "./get_org_profile_procedure";
 import * as GetPendingRegistrationProcedure from "./get_pending_registration_procedure";
 import * as GetProfileByEmailProcedure from "./get_profile_by_email_procedure";
 import * as GetProfileByIdentityProcedure from "./get_profile_by_identity_procedure";
+import * as GetProfileFriendsProcedure from "./get_profile_friends_procedure";
+import * as GetProfileGalleryProcedure from "./get_profile_gallery_procedure";
+import * as GetProfileStoriesProcedure from "./get_profile_stories_procedure";
 import * as OauthClaimProfileProcedure from "./oauth_claim_profile_procedure";
 import * as RecordPendingRegistrationProcedure from "./record_pending_registration_procedure";
 import * as SearchProfilesProcedure from "./search_profiles_procedure";
@@ -102,12 +107,22 @@ import FriendRequestRow from "./friend_request_table";
 import FriendshipRow from "./friendship_table";
 import GalleryPhotoRow from "./gallery_photo_table";
 import MyFeedRow from "./my_feed_table";
+import MyFollowingRow from "./my_following_table";
+import MyFriendRequestsRow from "./my_friend_requests_table";
+import MyFriendshipsRow from "./my_friendships_table";
+import MyGalleryRow from "./my_gallery_table";
 import MyMessagesRow from "./my_messages_table";
 import MyNotificationsRow from "./my_notifications_table";
 import MyOrgClaimFeeRow from "./my_org_claim_fee_table";
+import MyOrgMembersRow from "./my_org_members_table";
+import MyOrgRequestsRow from "./my_org_requests_table";
+import MyOrgsRow from "./my_orgs_table";
+import MyOwnProfileRow from "./my_own_profile_table";
+import MyPostsRow from "./my_posts_table";
 import MyProSubscriptionRow from "./my_pro_subscription_table";
 import MySearchAllowanceRow from "./my_search_allowance_table";
 import MySearchResultsRow from "./my_search_results_table";
+import MyStoryRow from "./my_story_table";
 import OrgMemberRequestRow from "./org_member_request_table";
 import OrganizationRow from "./organization_table";
 import OrganizationMemberRow from "./organization_member_table";
@@ -235,6 +250,34 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyFeedRow),
+  myFollowing: __table({
+    name: 'my_following',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyFollowingRow),
+  myFriendRequests: __table({
+    name: 'my_friend_requests',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyFriendRequestsRow),
+  myFriendships: __table({
+    name: 'my_friendships',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyFriendshipsRow),
+  myGallery: __table({
+    name: 'my_gallery',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyGalleryRow),
   myMessages: __table({
     name: 'my_messages',
     indexes: [
@@ -256,6 +299,41 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyOrgClaimFeeRow),
+  myOrgMembers: __table({
+    name: 'my_org_members',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOrgMembersRow),
+  myOrgRequests: __table({
+    name: 'my_org_requests',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOrgRequestsRow),
+  myOrgs: __table({
+    name: 'my_orgs',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOrgsRow),
+  myOwnProfile: __table({
+    name: 'my_own_profile',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOwnProfileRow),
+  myPosts: __table({
+    name: 'my_posts',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyPostsRow),
   myProSubscription: __table({
     name: 'my_pro_subscription',
     indexes: [
@@ -277,6 +355,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MySearchResultsRow),
+  myStory: __table({
+    name: 'my_story',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyStoryRow),
   searchRequestsForBox: __table({
     name: 'search_requests_for_box',
     indexes: [
@@ -344,9 +429,14 @@ const proceduresSchema = __procedures(
   __procedureSchema("check_didit_verification", CheckDiditVerificationProcedure.params, CheckDiditVerificationProcedure.returnType),
   __procedureSchema("create_verified_profile", CreateVerifiedProfileProcedure.params, CreateVerifiedProfileProcedure.returnType),
   __procedureSchema("gallery_upload_count_today", GalleryUploadCountTodayProcedure.params, GalleryUploadCountTodayProcedure.returnType),
+  __procedureSchema("get_org_members", GetOrgMembersProcedure.params, GetOrgMembersProcedure.returnType),
+  __procedureSchema("get_org_profile", GetOrgProfileProcedure.params, GetOrgProfileProcedure.returnType),
   __procedureSchema("get_pending_registration", GetPendingRegistrationProcedure.params, GetPendingRegistrationProcedure.returnType),
   __procedureSchema("get_profile_by_email", GetProfileByEmailProcedure.params, GetProfileByEmailProcedure.returnType),
   __procedureSchema("get_profile_by_identity", GetProfileByIdentityProcedure.params, GetProfileByIdentityProcedure.returnType),
+  __procedureSchema("get_profile_friends", GetProfileFriendsProcedure.params, GetProfileFriendsProcedure.returnType),
+  __procedureSchema("get_profile_gallery", GetProfileGalleryProcedure.params, GetProfileGalleryProcedure.returnType),
+  __procedureSchema("get_profile_stories", GetProfileStoriesProcedure.params, GetProfileStoriesProcedure.returnType),
   __procedureSchema("oauth_claim_profile", OauthClaimProfileProcedure.params, OauthClaimProfileProcedure.returnType),
   __procedureSchema("record_pending_registration", RecordPendingRegistrationProcedure.params, RecordPendingRegistrationProcedure.returnType),
   __procedureSchema("search_profiles", SearchProfilesProcedure.params, SearchProfilesProcedure.returnType),
@@ -371,18 +461,38 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
     readonly "user_profile": Omit<typeof tablesSchema.schemaType.tables["userProfile"], "accessorName"> & { readonly accessorName: "user_profile" };
     /** @deprecated Use `myFeed` instead. This alias will be removed in the next major version. */
     readonly "my_feed": Omit<typeof tablesSchema.schemaType.tables["myFeed"], "accessorName"> & { readonly accessorName: "my_feed" };
+    /** @deprecated Use `myFollowing` instead. This alias will be removed in the next major version. */
+    readonly "my_following": Omit<typeof tablesSchema.schemaType.tables["myFollowing"], "accessorName"> & { readonly accessorName: "my_following" };
+    /** @deprecated Use `myFriendRequests` instead. This alias will be removed in the next major version. */
+    readonly "my_friend_requests": Omit<typeof tablesSchema.schemaType.tables["myFriendRequests"], "accessorName"> & { readonly accessorName: "my_friend_requests" };
+    /** @deprecated Use `myFriendships` instead. This alias will be removed in the next major version. */
+    readonly "my_friendships": Omit<typeof tablesSchema.schemaType.tables["myFriendships"], "accessorName"> & { readonly accessorName: "my_friendships" };
+    /** @deprecated Use `myGallery` instead. This alias will be removed in the next major version. */
+    readonly "my_gallery": Omit<typeof tablesSchema.schemaType.tables["myGallery"], "accessorName"> & { readonly accessorName: "my_gallery" };
     /** @deprecated Use `myMessages` instead. This alias will be removed in the next major version. */
     readonly "my_messages": Omit<typeof tablesSchema.schemaType.tables["myMessages"], "accessorName"> & { readonly accessorName: "my_messages" };
     /** @deprecated Use `myNotifications` instead. This alias will be removed in the next major version. */
     readonly "my_notifications": Omit<typeof tablesSchema.schemaType.tables["myNotifications"], "accessorName"> & { readonly accessorName: "my_notifications" };
     /** @deprecated Use `myOrgClaimFee` instead. This alias will be removed in the next major version. */
     readonly "my_org_claim_fee": Omit<typeof tablesSchema.schemaType.tables["myOrgClaimFee"], "accessorName"> & { readonly accessorName: "my_org_claim_fee" };
+    /** @deprecated Use `myOrgMembers` instead. This alias will be removed in the next major version. */
+    readonly "my_org_members": Omit<typeof tablesSchema.schemaType.tables["myOrgMembers"], "accessorName"> & { readonly accessorName: "my_org_members" };
+    /** @deprecated Use `myOrgRequests` instead. This alias will be removed in the next major version. */
+    readonly "my_org_requests": Omit<typeof tablesSchema.schemaType.tables["myOrgRequests"], "accessorName"> & { readonly accessorName: "my_org_requests" };
+    /** @deprecated Use `myOrgs` instead. This alias will be removed in the next major version. */
+    readonly "my_orgs": Omit<typeof tablesSchema.schemaType.tables["myOrgs"], "accessorName"> & { readonly accessorName: "my_orgs" };
+    /** @deprecated Use `myOwnProfile` instead. This alias will be removed in the next major version. */
+    readonly "my_own_profile": Omit<typeof tablesSchema.schemaType.tables["myOwnProfile"], "accessorName"> & { readonly accessorName: "my_own_profile" };
+    /** @deprecated Use `myPosts` instead. This alias will be removed in the next major version. */
+    readonly "my_posts": Omit<typeof tablesSchema.schemaType.tables["myPosts"], "accessorName"> & { readonly accessorName: "my_posts" };
     /** @deprecated Use `myProSubscription` instead. This alias will be removed in the next major version. */
     readonly "my_pro_subscription": Omit<typeof tablesSchema.schemaType.tables["myProSubscription"], "accessorName"> & { readonly accessorName: "my_pro_subscription" };
     /** @deprecated Use `mySearchAllowance` instead. This alias will be removed in the next major version. */
     readonly "my_search_allowance": Omit<typeof tablesSchema.schemaType.tables["mySearchAllowance"], "accessorName"> & { readonly accessorName: "my_search_allowance" };
     /** @deprecated Use `mySearchResults` instead. This alias will be removed in the next major version. */
     readonly "my_search_results": Omit<typeof tablesSchema.schemaType.tables["mySearchResults"], "accessorName"> & { readonly accessorName: "my_search_results" };
+    /** @deprecated Use `myStory` instead. This alias will be removed in the next major version. */
+    readonly "my_story": Omit<typeof tablesSchema.schemaType.tables["myStory"], "accessorName"> & { readonly accessorName: "my_story" };
     /** @deprecated Use `searchRequestsForBox` instead. This alias will be removed in the next major version. */
     readonly "search_requests_for_box": Omit<typeof tablesSchema.schemaType.tables["searchRequestsForBox"], "accessorName"> & { readonly accessorName: "search_requests_for_box" };
   };
@@ -411,12 +521,22 @@ const tableAccessorAliases = {
   "story_post": "storyPost",
   "user_profile": "userProfile",
   "my_feed": "myFeed",
+  "my_following": "myFollowing",
+  "my_friend_requests": "myFriendRequests",
+  "my_friendships": "myFriendships",
+  "my_gallery": "myGallery",
   "my_messages": "myMessages",
   "my_notifications": "myNotifications",
   "my_org_claim_fee": "myOrgClaimFee",
+  "my_org_members": "myOrgMembers",
+  "my_org_requests": "myOrgRequests",
+  "my_orgs": "myOrgs",
+  "my_own_profile": "myOwnProfile",
+  "my_posts": "myPosts",
   "my_pro_subscription": "myProSubscription",
   "my_search_allowance": "mySearchAllowance",
   "my_search_results": "mySearchResults",
+  "my_story": "myStory",
   "search_requests_for_box": "searchRequestsForBox",
 } as const;
 
@@ -454,18 +574,38 @@ export type DbView = __DbViewBase & {
   readonly "user_profile": __DbViewBase["userProfile"];
   /** @deprecated Use `myFeed` instead. This alias will be removed in the next major version. */
   readonly "my_feed": __DbViewBase["myFeed"];
+  /** @deprecated Use `myFollowing` instead. This alias will be removed in the next major version. */
+  readonly "my_following": __DbViewBase["myFollowing"];
+  /** @deprecated Use `myFriendRequests` instead. This alias will be removed in the next major version. */
+  readonly "my_friend_requests": __DbViewBase["myFriendRequests"];
+  /** @deprecated Use `myFriendships` instead. This alias will be removed in the next major version. */
+  readonly "my_friendships": __DbViewBase["myFriendships"];
+  /** @deprecated Use `myGallery` instead. This alias will be removed in the next major version. */
+  readonly "my_gallery": __DbViewBase["myGallery"];
   /** @deprecated Use `myMessages` instead. This alias will be removed in the next major version. */
   readonly "my_messages": __DbViewBase["myMessages"];
   /** @deprecated Use `myNotifications` instead. This alias will be removed in the next major version. */
   readonly "my_notifications": __DbViewBase["myNotifications"];
   /** @deprecated Use `myOrgClaimFee` instead. This alias will be removed in the next major version. */
   readonly "my_org_claim_fee": __DbViewBase["myOrgClaimFee"];
+  /** @deprecated Use `myOrgMembers` instead. This alias will be removed in the next major version. */
+  readonly "my_org_members": __DbViewBase["myOrgMembers"];
+  /** @deprecated Use `myOrgRequests` instead. This alias will be removed in the next major version. */
+  readonly "my_org_requests": __DbViewBase["myOrgRequests"];
+  /** @deprecated Use `myOrgs` instead. This alias will be removed in the next major version. */
+  readonly "my_orgs": __DbViewBase["myOrgs"];
+  /** @deprecated Use `myOwnProfile` instead. This alias will be removed in the next major version. */
+  readonly "my_own_profile": __DbViewBase["myOwnProfile"];
+  /** @deprecated Use `myPosts` instead. This alias will be removed in the next major version. */
+  readonly "my_posts": __DbViewBase["myPosts"];
   /** @deprecated Use `myProSubscription` instead. This alias will be removed in the next major version. */
   readonly "my_pro_subscription": __DbViewBase["myProSubscription"];
   /** @deprecated Use `mySearchAllowance` instead. This alias will be removed in the next major version. */
   readonly "my_search_allowance": __DbViewBase["mySearchAllowance"];
   /** @deprecated Use `mySearchResults` instead. This alias will be removed in the next major version. */
   readonly "my_search_results": __DbViewBase["mySearchResults"];
+  /** @deprecated Use `myStory` instead. This alias will be removed in the next major version. */
+  readonly "my_story": __DbViewBase["myStory"];
   /** @deprecated Use `searchRequestsForBox` instead. This alias will be removed in the next major version. */
   readonly "search_requests_for_box": __DbViewBase["searchRequestsForBox"];
 };
@@ -488,18 +628,38 @@ export type Tables = __TablesBase & {
   readonly "user_profile": __TablesBase["userProfile"];
   /** @deprecated Use `myFeed` instead. This alias will be removed in the next major version. */
   readonly "my_feed": __TablesBase["myFeed"];
+  /** @deprecated Use `myFollowing` instead. This alias will be removed in the next major version. */
+  readonly "my_following": __TablesBase["myFollowing"];
+  /** @deprecated Use `myFriendRequests` instead. This alias will be removed in the next major version. */
+  readonly "my_friend_requests": __TablesBase["myFriendRequests"];
+  /** @deprecated Use `myFriendships` instead. This alias will be removed in the next major version. */
+  readonly "my_friendships": __TablesBase["myFriendships"];
+  /** @deprecated Use `myGallery` instead. This alias will be removed in the next major version. */
+  readonly "my_gallery": __TablesBase["myGallery"];
   /** @deprecated Use `myMessages` instead. This alias will be removed in the next major version. */
   readonly "my_messages": __TablesBase["myMessages"];
   /** @deprecated Use `myNotifications` instead. This alias will be removed in the next major version. */
   readonly "my_notifications": __TablesBase["myNotifications"];
   /** @deprecated Use `myOrgClaimFee` instead. This alias will be removed in the next major version. */
   readonly "my_org_claim_fee": __TablesBase["myOrgClaimFee"];
+  /** @deprecated Use `myOrgMembers` instead. This alias will be removed in the next major version. */
+  readonly "my_org_members": __TablesBase["myOrgMembers"];
+  /** @deprecated Use `myOrgRequests` instead. This alias will be removed in the next major version. */
+  readonly "my_org_requests": __TablesBase["myOrgRequests"];
+  /** @deprecated Use `myOrgs` instead. This alias will be removed in the next major version. */
+  readonly "my_orgs": __TablesBase["myOrgs"];
+  /** @deprecated Use `myOwnProfile` instead. This alias will be removed in the next major version. */
+  readonly "my_own_profile": __TablesBase["myOwnProfile"];
+  /** @deprecated Use `myPosts` instead. This alias will be removed in the next major version. */
+  readonly "my_posts": __TablesBase["myPosts"];
   /** @deprecated Use `myProSubscription` instead. This alias will be removed in the next major version. */
   readonly "my_pro_subscription": __TablesBase["myProSubscription"];
   /** @deprecated Use `mySearchAllowance` instead. This alias will be removed in the next major version. */
   readonly "my_search_allowance": __TablesBase["mySearchAllowance"];
   /** @deprecated Use `mySearchResults` instead. This alias will be removed in the next major version. */
   readonly "my_search_results": __TablesBase["mySearchResults"];
+  /** @deprecated Use `myStory` instead. This alias will be removed in the next major version. */
+  readonly "my_story": __TablesBase["myStory"];
   /** @deprecated Use `searchRequestsForBox` instead. This alias will be removed in the next major version. */
   readonly "search_requests_for_box": __TablesBase["searchRequestsForBox"];
 };

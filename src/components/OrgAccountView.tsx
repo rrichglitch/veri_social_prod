@@ -5,6 +5,7 @@ import { currentUserEmail } from '../utils/authState';
 import { getOAuthSession } from '../utils/oauthSession';
 import { QRCodeSVG } from 'qrcode.react';
 import { getProfileRowByEmail, getMyStoryPosts, getMyPosts, getOrganizationMembers, getOrganizationById, promoteToCoLeader, demoteCoLeader, transferLeadership, connectToSpacetimeDB, updateOrganization, updateOrgLocation, jitterOrgToApprox, deleteOrganization } from '../utils/spacetime';
+import { fetchOrgProfile } from '../utils/clientData';
 import { getBrowserLocation, jitterLocation, reverseGeocode } from '../utils/geo';
 import PreciseLocationToggle from './PreciseLocationToggle';
 import ProfileSettingsTab from './ProfileSettingsTab';
@@ -39,10 +40,12 @@ function OrgAccountView() {
     setMembers(getOrganizationMembers(org.id));
     setStories(await getMyStoryPosts(org.identity));
     setMyPosts(await getMyPosts(org.identity));
-    const orgRow = getOrganizationById(org.id);
+    // my_orgs view gives the instant row; the RPC carries the location
+    // columns the view doesn't (scoped data layer).
+    const orgRow = getOrganizationById(org.id) || (await fetchOrgProfile(org.id));
     if (orgRow) {
       setOrgData({ ...orgRow } as any);
-      setCreatedAt(new Date(Number((orgRow as any).createdAt?.microsSinceUnixEpoch || 0) / 1000));
+      setCreatedAt(orgRow.createdAt ?? null);
       setOrgPrecision((orgRow.locationPrecision as 'off' | 'approx' | 'exact') || 'off');
       setHideMembers(!!orgRow.hideMembers);
     }

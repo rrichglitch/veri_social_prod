@@ -95,9 +95,8 @@ function AuthGate({ children }: { children: ReactNode }) {
     }
     let meDisabled = false;
     try {
-      // Own-row lookup via the primary-key index from the local cache.
-      const myHex = boot.identityHex ? `0x${boot.identityHex.replace(/^0x/, '')}` : '';
-      const me = myHex ? getDbConnection()?.db.user_profile.identity.find(Identity.fromString(myHex)) : null;
+      // Own-row lookup from the my_own_profile view (scoped data layer).
+      const me = getDbConnection()?.db?.my_own_profile?.iter?.().next().value ?? null;
       meDisabled = !!(me && me.disabled);
     } catch {
       // cache not synced yet — treat as ordinary navigation
