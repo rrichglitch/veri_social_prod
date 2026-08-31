@@ -1,43 +1,71 @@
 import { useState, useEffect } from 'react';
-import { connectToSpacetimeDB, getProfileByEmail } from '../utils/spacetime';
-import { getOAuthSession, clearOAuthSession } from '../utils/oauthSession';
+import { getOAuthSession } from '../utils/oauthSession';
+import { getProfileRowByEmail } from '../utils/spacetime';
+import { ensureGateBoot, getGateBootSnapshot, isGateBootDone, onGateBootChange } from '../utils/gateBoot';
 
 // Tracks the signed-in user's profile for top-bar UI (login state + avatar).
+//
+// Reads the once-per-session boot singleton (utils/gateBoot.ts) instead of
+// running its own connect + RPC on every mount: when the boot has already
+// resolved, the very first render already shows the logged-in icons — no
+// "Sign In" flash on page navigation. The avatar comes from the synced local
+// subscription cache, so no `getProfileByEmail` RPC happens here at all.
 export function useAuthProfile() {
-  const [profilePicture, setProfilePicture] = useState<string>('');
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const noSession = !getOAuthSession();
+  const [booted, setBooted] = useState(() => (noSession ? true : isGateBootDone()));
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    if (noSession) return false;
+    if (!isGateBootDone()) return false;
+    const b = getGateBootSnapshot();
+    return !!(b.email && b.hasProfile);
+  });
+  const [profilePicture, setProfilePicture] = useState(() => {
+    if (noSession || !isGateBootDone()) return '';
+    const b = getGateBootSnapshot();
+    if (!b.email || !b.hasProfile) return '';
+    try {
+      const row = getProfileRowByEmail(b.email);
+      return (row?.profilePictureSmall || row?.profilePicture) ?? '';
+    } catch {
+      return '';
+    }
+  });
 
   useEffect(() => {
-    let cancelled = false;
+    if (booted) return undefined;
 
-    const initAuth = async () => {
-      const oauthSession = getOAuthSession();
-      if (!oauthSession) {
-        setIsLoggedIn(false);
-        return;
-      }
-      try {
-        await connectToSpacetimeDB(oauthSession.email, oauthSession.stToken);
-        for (let i = 0; i < 10; i++) {
-          if (cancelled) return;
-          const profile = await getProfileByEmail(oauthSession.email);
-          if (profile) {
-            setProfilePicture(profile.profilePicture);
-            setIsLoggedIn(true);
-            return;
-          }
-          await new Promise(resolve => setTimeout(resolve, 100));
+    let alive = true;
+    const refresh = () => {
+      if (!alive) return;
+      setBooted(isGateBootDone());
+      const b = getGateBootSnapshot();
+      setIsLoggedIn(!!(b.email && b.hasProfile));
+      if (b.email && b.hasProfile) {
+        try {
+          const row = getProfileRowByEmail(b.email);
+          if (row) setProfilePicture((row.profilePictureSmall || row.profilePicture) ?? '');
+        } catch {
+          // cache not synced yet — keep placeholder avatar
         }
-      } catch (e) {
-        console.error('OAuth session connect failed:', e);
-        clearOAuthSession();
+      } else {
+        setProfilePicture('');
       }
-      if (!cancelled) setIsLoggedIn(false);
     };
 
-    initAuth();
-    return () => { cancelled = true; };
-  }, []);
+    // Boot may already be in flight (started by AuthGate); just wait for it.
+    ensureGateBoot().then(refresh);
+    const off = onGateBootChange(refresh);
 
-  return { isLoggedIn, profilePicture };
+    // The local subscription cache can land after the boot resolves; pick up
+    // the avatar once it does.
+    const t = setTimeout(refresh, 1000);
+
+    return () => {
+      alive = false;
+      off();
+      clearTimeout(t);
+    };
+  }, [booted]);
+
+  return { isLoggedIn, profilePicture, booted };
 }

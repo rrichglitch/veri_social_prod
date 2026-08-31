@@ -11,13 +11,9 @@ import {
 } from "spacetimedb";
 
 export default {
-  name: __t.string(),
-  picture: __t.string(),
-  pictureSmall: __t.option(__t.string()),
-  pictureUrl: __t.option(__t.string()),
-  city: __t.string(),
-  description: __t.string(),
-  locationLat: __t.option(__t.f64()),
-  locationLng: __t.option(__t.f64()),
-  locationPrecision: __t.option(__t.string()),
+  identity: __t.identity(),
+  adminSecret: __t.string(),
+  amountCents: __t.u32(),
+  active: __t.bool(),
+  nextBillDate: __t.string(),
 };

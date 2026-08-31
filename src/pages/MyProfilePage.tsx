@@ -2,46 +2,76 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { useApp } from '../App';
-import { getProfileByEmail, getMyStoryPosts, getMyPosts, updateProfile, deleteStoryPost, updateLocation, disconnectFromSpacetimeDB } from '../utils/spacetime';
+import {
+  getProfileByEmail,
+  getProfileRowByEmail,
+  getMyPosts,
+  updateProfile,
+  setProfileDisabled,
+  deleteStoryPost,
+  updateLocation,
+  disconnectFromSpacetimeDB,
+  uploadProfilePicture,
+} from '../utils/spacetime';
+import { compressProfileImage, compressProfileThumb } from '../utils/imageCompress';
+import { fileToBase64 } from '../utils/sanitize';
 import { clearOAuthSession, getOAuthSession } from '../utils/oauthSession';
+import { markCheckoutReturn, skipCheckoutDetour } from '../utils/checkoutReturn';
 import { getBrowserLocation, jitterLocation, reverseGeocode } from '../utils/geo';
 import AuthActions from '../components/AuthActions';
 import TopBar from '../components/TopBar';
 import OrgSection from '../components/OrgSection';
 import OrgAccountView from '../components/OrgAccountView';
 import LocationSettings, { type LocationPrecision } from '../components/LocationSettings';
+import ProfileSettingsTab from '../components/ProfileSettingsTab';
+import ConfirmTypeModal from '../components/ConfirmTypeModal';
 import ProfileDetails from '../components/ProfileDetails';
 import ProfileTabs from '../components/ProfileTabs';
 import FriendsList from '../components/FriendsList';
+import Gallery from '../components/Gallery';
 import { useOrg } from '../contexts/OrgContext';
 
 interface UserProfile {
   identity: string;
   full_name: string;
   profile_picture: string;
+  profile_picture_small?: string;
+  profile_picture_url?: string;
   city: string;
   description: string;
   created_at: Date;
   age?: number;
   gender?: string;
   is_pro?: boolean;
-}
-
-interface StoryPost {
-  id: bigint;
-  content: string;
-  mediaData: string;
-  mediaTypes: string;
-  createdAt: Date;
-  posterIdentity: string;
-  posterName: string;
-  posterPicture: string;
+  disabled?: boolean;
 }
 
 function MyProfilePage() {
   const navigate = useNavigate();
   const { email } = useApp();
   const { activeOrg } = useOrg();
+
+  // Own-profile object built from the local subscription cache (sync, no RPC)
+  // so /me renders instantly on navigation.
+  const buildProfileFromCache = (em: string): UserProfile | null => {
+    const p = getProfileRowByEmail(em);
+    if (!p) return null;
+    const date = p.createdAtMicros ? new Date(Number(p.createdAtMicros) / 1000) : new Date();
+    return {
+      identity: p.identity.toHexString(),
+      full_name: p.fullName,
+      profile_picture: p.profilePicture,
+      profile_picture_small: p.profilePictureSmall,
+      profile_picture_url: p.profilePictureUrl,
+      city: p.city,
+      description: p.description,
+      created_at: date,
+      age: p.age,
+      gender: p.gender,
+      is_pro: p.isPro,
+      disabled: p.disabled,
+    };
+  };
 
   const handleLogout = () => {
     const oauthSession = getOAuthSession();
@@ -56,18 +86,23 @@ function MyProfilePage() {
     }
   };
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [profile, setProfile] = useState<UserProfile | null>(() => buildProfileFromCache(email || ''));
+  const [isLoading, setIsLoading] = useState(() => !getProfileRowByEmail(email || ''));
   const [showQR, setShowQR] = useState(false);
-  const [stories, setStories] = useState<StoryPost[]>([]);
   const [myPosts, setMyPosts] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'story' | 'posts' | 'friends' | 'orgs'>('story');
+  const [activeTab, setActiveTab] = useState<'posts' | 'friends' | 'orgs' | 'settings'>(() => {
+    const saved = localStorage.getItem('veri_me_tab');
+    return (saved === 'posts' || saved === 'friends' || saved === 'orgs' || saved === 'settings') ? (saved as any) : 'posts';
+  });
   const [hideFriends, setHideFriends] = useState(false);
   const [isUpdatingHide, setIsUpdatingHide] = useState(false);
+  const [proConfirmed, setProConfirmed] = useState(false);
    
   const [showPictureModal, setShowPictureModal] = useState(false);
   const [showPictureSelect, setShowPictureSelect] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDisableModal, setShowDisableModal] = useState(false);
+  const [showEnableModal, setShowEnableModal] = useState(false);
   const [postToDelete, setPostToDelete] = useState<any | null>(null);
   const [locPrecision, setLocPrecision] = useState<LocationPrecision>('off');
   const [isLocUpdating, setIsLocUpdating] = useState(false);
@@ -75,9 +110,46 @@ function MyProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (email) {
-      loadProfile();
-    }
+    if (!email) return;
+    loadProfile();
+    // Light poll keeps the own row + stories/posts fresh (all local cache
+    // reads — the loading flash is gone because nothing waits on the network).
+    const t = setInterval(loadProfile, 2000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
+
+  // Returning from Stripe Checkout after a Pro payment: land on the profile,
+  // repair history (skip the Stripe entry), show a confirmation banner, and
+  // poll until the webhook flips is_pro.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('pro_claim') !== 'success') return;
+    markCheckoutReturn();
+    let alive = true;
+    let tries = 0;
+    const poll = async () => {
+      tries += 1;
+      const who = email || '';
+      if (who) {
+        try {
+          const p = await getProfileByEmail(who);
+          if (alive && p?.isPro) {
+            setProConfirmed(true);
+            window.history.replaceState({}, '', '/me');
+            setTimeout(() => { if (alive) setProConfirmed(false); }, 5000);
+            return;
+          }
+        } catch {}
+      }
+      if (tries >= 20) {
+        if (alive) window.history.replaceState({}, '', '/me');
+        return;
+      }
+      setTimeout(poll, 1500);
+    };
+    setTimeout(poll, 1500);
+    return () => { alive = false; };
   }, [email]);
 
   useEffect(() => {
@@ -102,27 +174,12 @@ function MyProfilePage() {
     if (!email) return;
     
     try {
-      const profileData = await getProfileByEmail(email);
+      // Local subscription cache — no procedure RPC on the own page.
+      const profileData = getProfileRowByEmail(email);
       if (profileData) {
-        const date = profileData.createdAtMicros
-          ? new Date(Number(profileData.createdAtMicros) / 1000)
-          : new Date();
         const identityHex = profileData.identity.toHexString();
         
-        setProfile({
-          identity: identityHex,
-          full_name: profileData.fullName,
-          profile_picture: profileData.profilePicture,
-          city: profileData.city,
-          description: profileData.description,
-          created_at: date,
-          age: profileData.age,
-          gender: profileData.gender,
-          is_pro: profileData.isPro,
-        });
-
-        const profileStories = await getMyStoryPosts(identityHex);
-        setStories(profileStories);
+        setProfile(buildProfileFromCache(email));
 
         const userPosts = await getMyPosts(identityHex);
         setMyPosts(userPosts);
@@ -144,7 +201,7 @@ function MyProfilePage() {
       const pos = await getBrowserLocation();
       const city = await reverseGeocode(pos.lat, pos.lng);
       if (city) {
-        await updateProfile(undefined, city, undefined);
+        await updateProfile(undefined, undefined, undefined, city);
       }
       const isExact = locPrecision === 'exact';
       const toSend = isExact ? pos : jitterLocation(pos.lat, pos.lng, 5);
@@ -163,7 +220,7 @@ function MyProfilePage() {
   const handleHideFriendsToggle = async (checked: boolean) => {
     setIsUpdatingHide(true);
     try {
-      await updateProfile(undefined, undefined, undefined, checked);
+      await updateProfile(undefined, undefined, undefined, undefined, undefined, checked);
       setHideFriends(checked);
     } catch (e: any) {
       alert(e?.message || 'Failed to update');
@@ -172,23 +229,70 @@ function MyProfilePage() {
     }
   };
 
+  // Settings tab: disable/enable the profile. Both go through the typed
+  // confirmation modal — disabling deletes all posts and blocks login until
+  // re-enabled; re-enabling makes the profile visible again.
+  const handleDisable = async () => {
+    try {
+      await setProfileDisabled(true);
+      setProfile((p) => (p ? { ...p, disabled: true } : p));
+      // All posts the account made were deleted server-side — reflect that now.
+      setMyPosts([]);
+      setShowDisableModal(false);
+      // Disabling logs the user out — the account is now in enable-only mode
+      // until they sign back in and re-enable.
+      handleLogout();
+    } catch (e: any) {
+      alert(e?.message || 'Failed to update');
+    }
+  };
+
+  const handleEnable = async () => {
+    try {
+      await setProfileDisabled(false);
+      setProfile((p) => (p ? { ...p, disabled: false } : p));
+      setShowEnableModal(false);
+    } catch (e: any) {
+      alert(e?.message || 'Failed to update');
+    }
+  };
+
+  // Disabled account logging back in: AuthGate bounces them to
+  // /me?enable_profile=1 — land on the Settings tab with the enable modal open.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('enable_profile') !== '1') return;
+    window.history.replaceState({}, '', '/me');
+    setActiveTab('settings');
+    setShowEnableModal(true);
+  }, []);
+
   const handlePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
-      try {
-        await updateProfile(base64, undefined, undefined);
-        await loadProfile();
-      } catch (e) {
-        console.error('Error updating profile picture:', e);
-      } finally {
-        setShowPictureSelect(false);
-      }
-    };
-    reader.readAsDataURL(file);
+    setIsUpdatingHide(true);
+    try {
+      // Full-size WebP < 0.5MB → S3 (URL stored); 10KB thumbnail → DB.
+      const [fullBlob, thumbBlob] = await Promise.all([
+        compressProfileImage(file),
+        compressProfileThumb(file),
+      ]);
+      const { url } = await uploadProfilePicture(fullBlob);
+      const small = await fileToBase64(thumbBlob);
+      await updateProfile(undefined, small, url);
+      await loadProfile();
+    } catch (e) {
+      console.error('Error updating profile picture:', e);
+      alert(e instanceof Error ? e.message : 'Failed to update picture');
+    } finally {
+      setIsUpdatingHide(false);
+      setShowPictureSelect(false);
+    }
+  };
+
+  const handleBack = () => {
+    if (!skipCheckoutDetour()) navigate(-1);
   };
 
   if (activeOrg) {
@@ -210,29 +314,31 @@ function MyProfilePage() {
   return (
     <div className="my-profile-page">
       <TopBar
-        left={<button onClick={() => navigate(-1)} className="topbar-back">← Back</button>}
+        left={<button onClick={handleBack} className="topbar-back">← Back</button>}
         center={<Link to="/home" className="topbar-logo"><img src="/veri.png" alt="Veri Social" /></Link>}
         right={<AuthActions profileReplacement={<button onClick={handleLogout} className="topbar-signin" style={{background:"#dc2626"}}>Log Out</button>} />}
         absoluteCenter
       />
 
       <main className="main-content">
+        {proConfirmed && <div className="pro-confirm-banner">✓ Payment confirmed — welcome to Pro!</div>}
         <div className="profile-section">
           <ProfileDetails
-            picture={profile?.profile_picture || ''}
+            picture={(profile as any)?.profile_picture_small || profile?.profile_picture || ''}
+            fullPicture={(profile as any)?.profile_picture_url || profile?.profile_picture || ''}
             name={profile?.full_name || ''}
             city={profile?.city || ''}
             description={profile?.description || ''}
             onUpdateLocation={handleLocationUpdate}
             isLocationUpdating={isLocUpdating}
             onSaveDescription={async (v) => {
-              await updateProfile(undefined, undefined, v);
+              await updateProfile(undefined, undefined, undefined, undefined, v);
               await loadProfile();
             }}
             age={profile?.age}
             gender={profile?.gender}
             onSaveAgeGender={async (_b, g) => {
-              await updateProfile(undefined, undefined, undefined, undefined, g);
+              await updateProfile(undefined, undefined, undefined, undefined, undefined, undefined, g);
               await loadProfile();
             }}
             onPictureClick={() => setShowPictureModal(true)}
@@ -256,7 +362,11 @@ function MyProfilePage() {
           </ProfileDetails>
         </div>
 
-        <LocationSettings currentPrecision={locPrecision} onChanged={setLocPrecision} />
+        {/* Gallery — own view: add/remove photos (right under the top info section) */}
+        <Gallery
+          ownerIdentityHex={profile?.identity || ''}
+          isOwn
+        />
 
         <input
           type="file"
@@ -269,13 +379,13 @@ function MyProfilePage() {
         <div className="story-section">
           <ProfileTabs
             tabs={[
-              { key: 'story', label: 'Story' },
               { key: 'posts', label: 'Posts' },
               { key: 'friends', label: 'Friends' },
               { key: 'orgs', label: 'Organizations' },
+              { key: 'settings', label: 'Settings' },
             ]}
             active={activeTab}
-            onChange={(k) => setActiveTab(k as any)}
+            onChange={(k) => { setActiveTab(k as any); localStorage.setItem('veri_me_tab', k); }}
           />
 
           {activeTab === 'orgs' ? (
@@ -291,42 +401,15 @@ function MyProfilePage() {
                 busy: isUpdatingHide,
               }}
             />
-          ) : activeTab === 'story' ? (
-            <>
-              <div className="no-post-own-story">
-                <p>You cannot post on your own story. Others can share stories about you.</p>
-              </div>
-
-              {stories.length === 0 ? (
-                <div className="empty-story">
-                  <p>No stories about you yet.</p>
-                </div>
-              ) : (
-                <div className="stories-list">
-                  {stories.map((story) => (
-                    <div key={story.id.toString()} className="story-card">
-                      <Link to={`/profile/${story.posterIdentity}`} className="story-header-link">
-                        <div className="story-header">
-                          {story.posterPicture ? (
-                            <img src={story.posterPicture} alt={story.posterName} className="story-avatar" />
-                          ) : (
-                            <div className="story-avatar-placeholder" />
-                          )}
-                          <div className="story-meta">
-                            <span className="story-author">{story.posterName}</span>
-                            <span className="story-date">{new Date(story.createdAt).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      </Link>
-                      <p className="story-content">{story.content}</p>
-                      {story.mediaData && story.mediaData.length > 0 && (
-                        <img src={story.mediaData} alt="Story media" className="story-media" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+          ) : activeTab === 'settings' ? (
+            <ProfileSettingsTab
+              locationControl={
+                <LocationSettings currentPrecision={locPrecision} onChanged={setLocPrecision} />
+              }
+              dangerLabel={profile?.disabled ? 'Enable Your Profile' : 'Disable Your Profile'}
+              dangerHint={profile?.disabled ? 'Your profile is disabled — it will not appear in searches.' : undefined}
+              onDanger={() => (profile?.disabled ? setShowEnableModal(true) : setShowDisableModal(true))}
+            />
           ) : (
             <>
               {myPosts.length === 0 ? (
@@ -396,8 +479,8 @@ function MyProfilePage() {
       {showPictureModal && (
         <div className="picture-modal" onClick={() => setShowPictureModal(false)}>
           <div className="picture-content" onClick={(e) => e.stopPropagation()}>
-            {profile?.profile_picture ? (
-              <img src={profile.profile_picture} alt={profile.full_name} className="large-picture" />
+            {(profile as any)?.profile_picture_url || profile?.profile_picture ? (
+              <img src={(profile as any)?.profile_picture_url || profile?.profile_picture} alt={profile?.full_name || ''} className="large-picture" />
             ) : (
               <div className="large-picture-placeholder" />
             )}
@@ -464,6 +547,34 @@ function MyProfilePage() {
         </div>
       )}
 
+      {showDisableModal && (
+        <ConfirmTypeModal
+          title="Disable Your Profile?"
+          warning="Disabling your profile deletes ALL posts you have made, hides your profile from searches, and prevents you from logging back in until you re-enable your account."
+          phrase="Disable My Profile"
+          confirmLabel="Disable My Profile"
+          onConfirm={handleDisable}
+          onCancel={() => setShowDisableModal(false)}
+        />
+      )}
+
+      {showEnableModal && (
+        <ConfirmTypeModal
+          title="Enable Your Profile?"
+          warning="Your profile will become visible again in searches, and you will be able to log in and post normally."
+          phrase="Re-Enable My Profile"
+          confirmLabel="Re-Enable My Profile"
+          onConfirm={handleEnable}
+          onCancel={() => {
+            setShowEnableModal(false);
+            // Cancel while disabled = leave the app entirely (login is
+            // pinned to this modal until the account is re-enabled).
+            handleLogout();
+          }}
+          blockBackdropClose
+        />
+      )}
+
       <style>{`
         .my-profile-page {
           min-height: 100vh;
@@ -471,7 +582,7 @@ function MyProfilePage() {
         }
 
         .main-content {
-          max-width: 600px;
+          max-width: var(--content-max-width);
           margin: 0 auto;
           padding: 24px;
         }
@@ -490,6 +601,7 @@ function MyProfilePage() {
           color: #999;
         }
         .join-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .pro-confirm-banner { background: #ecfdf5; color: #059669; font-size: 14px; font-weight: 600; text-align: center; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
         .upgrade-pro-btn { padding: 5px 14px; background: #f59e0b; color: white; border: none; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.15s; }
         .upgrade-pro-btn:hover { background: #d97706; }
         .pro-badge { padding: 3px 10px; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; cursor: pointer; transition: filter 0.15s; }
@@ -502,21 +614,6 @@ function MyProfilePage() {
           font-size: 16px;
           color: #666;
           margin: 0 0 16px;
-        }
-
-        .no-post-own-story {
-          background: white;
-          border-radius: 12px;
-          padding: 16px;
-          text-align: center;
-          margin-bottom: 16px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .no-post-own-story p {
-          margin: 0;
-          color: #666;
-          font-size: 14px;
         }
 
         .stories-list {

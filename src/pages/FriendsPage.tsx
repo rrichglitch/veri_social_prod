@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { currentUserEmail } from '../utils/authState';
 import TopBar from '../components/TopBar';
 import AuthActions from '../components/AuthActions';
-import { getFriendChats, getMyOrganizations, getOrganizationMembers, getProfileByEmail } from '../utils/spacetime';
+import { getFriendChats, getMyOrganizations, getOrganizationMembers, getProfileRowByEmail } from '../utils/spacetime';
 import { useOrg } from '../contexts/OrgContext';
 
 function FriendsPage() {
@@ -17,7 +17,7 @@ function FriendsPage() {
     const email = currentUserEmail();
     if (!email) return;
     try {
-      getProfileByEmail(email).then(p => {
+      Promise.resolve(getProfileRowByEmail(email)).then(p => {
         if (p) {
           const id = p.identity.toHexString();
           if (activeOrg) {
@@ -92,7 +92,7 @@ function FriendsPage() {
 
       <style>{`
         .messages-page { min-height: 100vh; background: #f5f5f5; }
-        .main-content { max-width: 600px; margin: 0 auto; padding: 24px; }
+        .main-content { max-width: var(--content-max-width); margin: 0 auto; padding: 24px; }
         .search-input {
           width: 100%; padding: 12px 16px; border: 1px solid #e0e0e0; border-radius: 24px;
           font-size: 15px; outline: none; margin-bottom: 20px; box-sizing: border-box;

@@ -98,7 +98,6 @@ function AboutPage() {
       <style>{`
         .topbar-search-wrap {
           width: 100%;
-          max-width: 500px;
         }
 
         .about-page {
@@ -109,7 +108,7 @@ function AboutPage() {
         }
 
         .about-content {
-          max-width: 700px;
+          max-width: var(--content-max-width);
           margin: 0 auto;
           padding: 40px 24px;
         }
@@ -200,7 +199,7 @@ function AboutPage() {
         }
 
         .footer-content {
-          max-width: 700px;
+          max-width: var(--content-max-width);
           margin: 0 auto;
           display: flex;
           justify-content: space-between;

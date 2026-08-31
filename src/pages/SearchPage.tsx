@@ -3,7 +3,7 @@ import { useSearchParams, Link, useNavigate, useNavigationType } from 'react-rou
 import { isSignedIn } from '../utils/authState';
 import { getOAuthSession } from '../utils/oauthSession';
 import { useApp } from '../App';
-import { connectToSpacetimeDB, getProfileByEmail, getDbConnection } from '../utils/spacetime';
+import { connectToSpacetimeDB, getProfileByEmail, getDbConnection, getOrganizationById } from '../utils/spacetime';
 import { runSearch as executeSearch, type SearchResult, type SearchMode, getSearchProvider, setSearchProvider } from '../utils/searchProvider';
 import { formatMiles } from '../utils/geo';
 
@@ -89,6 +89,8 @@ function SearchPage() {
       orgId: r.orgId,
       email: r.email,
       fullName: r.fullName,
+      // Swipe background = the FULL picture (S3 URL), thumbnails everywhere else
+      fullPicture: r.fullPicture || r.profilePicture,
       profilePicture: r.profilePicture,
       city: r.city,
       description: r.description,
@@ -106,8 +108,34 @@ function SearchPage() {
   const [genderFilter, setGenderFilter] = useState<string>(() => localStorage.getItem('veri_genderFilter') || 'any');
   const [ageMin, setAgeMin] = useState<string>(() => localStorage.getItem('veri_ageMin') || '');
   const [ageMax, setAgeMax] = useState<string>(() => localStorage.getItem('veri_ageMax') || '');
-  const [showIndividuals, setShowIndividuals] = useState<boolean>(() => localStorage.getItem('veri_showIndividuals') !== '0');
-  const [showOrganizations, setShowOrganizations] = useState<boolean>(() => localStorage.getItem('veri_showOrganizations') !== '0');
+  const [showIndividuals, setShowIndividuals] = useState<boolean>(() => {
+    // ?claimable=1 (silent param from "Claim Existing Organization"): orgs only.
+    if (new URLSearchParams(window.location.search).get('claimable') === '1') return false;
+    return localStorage.getItem('veri_showIndividuals') !== '0';
+  });
+  const [showOrganizations, setShowOrganizations] = useState<boolean>(() => {
+    if (new URLSearchParams(window.location.search).get('claimable') === '1') return true;
+    return localStorage.getItem('veri_showOrganizations') !== '0';
+  });
+  // Silent claim-mode: orgs WITHOUT a leader only (backend-seeded, claimable).
+  const [claimableOnly, setClaimableOnly] = useState<boolean>(() => new URLSearchParams(window.location.search).get('claimable') === '1');
+  // Search-option changes exit claim mode: the leaderless restriction is a
+  // curated flow, so once the user starts narrowing what's being searched
+  // (Show toggles, gender, age) it quietly reverts to a normal search. The
+  // query field, the keyword/descriptive provider toggle, and location do NOT
+  // drop it — they only change how/where the same leaderless set is searched.
+  // The URL param is stripped too (replace, no history entry) so the current
+  // page no longer carries it.
+  const dropClaimable = () => {
+    if (!claimableOnly) return;
+    setClaimableOnly(false);
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('claimable') === '1') {
+      p.delete('claimable');
+      const rest = p.toString();
+      navigate(`/search${rest ? `?${rest}` : ''}`, { replace: true });
+    }
+  };
   const searchOptionsRef = useRef<HTMLDivElement>(null);
   const [locInput, setLocInput] = useState('');
   const [locSuggestions, setLocSuggestions] = useState<{ place_id: number; display_name: string; lat: string; lon: string }[]>([]);
@@ -118,8 +146,8 @@ function SearchPage() {
   useEffect(() => { localStorage.setItem('veri_genderFilter', genderFilter); }, [genderFilter]);
   useEffect(() => { localStorage.setItem('veri_ageMin', ageMin); }, [ageMin]);
   useEffect(() => { localStorage.setItem('veri_ageMax', ageMax); }, [ageMax]);
-  useEffect(() => { localStorage.setItem('veri_showIndividuals', showIndividuals ? '1' : '0'); }, [showIndividuals]);
-  useEffect(() => { localStorage.setItem('veri_showOrganizations', showOrganizations ? '1' : '0'); }, [showOrganizations]);
+  useEffect(() => { if (!claimableOnly) localStorage.setItem('veri_showIndividuals', showIndividuals ? '1' : '0'); }, [showIndividuals]);
+  useEffect(() => { if (!claimableOnly) localStorage.setItem('veri_showOrganizations', showOrganizations ? '1' : '0'); }, [showOrganizations]);
   useEffect(() => { localStorage.setItem('veri_nearbyFirst', nearbyFirst ? '1' : '0'); }, [nearbyFirst]);
 
   useEffect(() => {
@@ -231,7 +259,7 @@ function SearchPage() {
     // query+filters+location+provider — no fresh search, no bandwidth.
     const cacheKey = JSON.stringify({
       q: query, g: genderFilter, a1: ageMin, a2: ageMax,
-      i: showIndividuals, o: showOrganizations, p: providerMode,
+      i: showIndividuals, o: showOrganizations, p: providerMode, c: claimableOnly ? 1 : 0,
       loc: activePos ? [activePos.lat, activePos.lng] : null,
     });
     if (navigationType === 'POP') {
@@ -259,32 +287,52 @@ function SearchPage() {
         // Server-side search via the searchProvider abstraction:
         //   'stdb' → keyword procedure on SpacetimeDB (always available)
         //   'gpu'  → semantic hybrid on the GPU box, keyword fallback
+        // Claim-mode (silent ?claimable=1): only organizations, and only ones that
+        // have NO leader yet (backend-seeded rows with the zero identity) — the
+        // ones available to be claimed.
+        const ZERO_LEADER = '0000000000000000000000000000000000000000000000000000000000000000';
+        const effIndividuals = claimableOnly ? false : showIndividuals;
+        const effOrganizations = claimableOnly ? true : showOrganizations;
         const found = await executeSearch(query, {
           tier: isSignedIn() ? 'free' : 'anon',
           filters: {
             gender: genderFilter,
             ageMin: ageMin ? parseInt(ageMin, 10) : undefined,
             ageMax: ageMax ? parseInt(ageMax, 10) : undefined,
-            showIndividuals,
-            showOrganizations,
+            showIndividuals: effIndividuals,
+            showOrganizations: effOrganizations,
             limit: 60,
           },
           activePos,
         });
         if (cancelled) return;
 
+        let filtered = found;
+        if (claimableOnly) {
+          filtered = found.filter((r) => {
+            if (r.type !== 'org' || r.orgId === undefined) return false;
+            const org = getOrganizationById(r.orgId);
+            if (!org) return false;
+            const leaderHex =
+              typeof (org as any).leaderIdentity?.toHexString === 'function'
+                ? (org as any).leaderIdentity.toHexString()
+                : String((org as any).leaderIdentity ?? '');
+            return leaderHex.toLowerCase() === ZERO_LEADER;
+          });
+        }
+
         // Nearby-first sorting (distance was computed in the provider)
         if (nearbyFirst) {
-          found.sort((a, b) => {
+          filtered.sort((a, b) => {
             const da = a.distance ?? Infinity;
             const db = b.distance ?? Infinity;
             return da - db;
           });
         }
 
-        setResults(found);
+        setResults(filtered);
         // Remember for back/forward remounts (cap so the map can't grow unbounded)
-        searchResultCache.set(cacheKey, { results: found, allowanceNotice });
+        searchResultCache.set(cacheKey, { results: filtered, allowanceNotice });
         if (searchResultCache.size > 12) {
           const oldest = searchResultCache.keys().next().value;
           if (oldest !== undefined) searchResultCache.delete(oldest);
@@ -311,7 +359,7 @@ function SearchPage() {
     // signedIn must be a dep: signing in/out after a cold load changes the
     // tier (anon = orgs only) — without it the stale empty result persists
     // until the page is remounted.
-  }, [query, isConnected, activePos, nearbyFirst, genderFilter, ageMin, ageMax, showIndividuals, showOrganizations, searchTick, signedIn, navigationType, providerMode]);
+  }, [query, isConnected, activePos, nearbyFirst, genderFilter, ageMin, ageMax, showIndividuals, showOrganizations, searchTick, signedIn, navigationType, providerMode, claimableOnly]);
 
   return (
     <div className="search-page">
@@ -325,7 +373,14 @@ function SearchPage() {
                 // If the query is unchanged (e.g. options were just updated),
                 // the URL won't change — force a re-run via the tick.
                 if (q.trim() === query) setSearchTick((t) => t + 1);
-                navigate(`/search?q=${encodeURIComponent(q)}`);
+                // A new query KEEPS claim mode: describing the org you want
+                // to claim must not drop the leaderless criteria (only option
+                // changes do, via dropClaimable). Preserving the param in the
+                // URL also keeps it across remounts (refresh, back-nav).
+                const p = new URLSearchParams(window.location.search);
+                p.set('q', q.trim());
+                if (!claimableOnly) p.delete('claimable');
+                navigate(`/search?${p.toString()}`);
               }
             }}
             value={inputValue}
@@ -361,7 +416,7 @@ function SearchPage() {
                     <input
                       type="checkbox"
                       checked={showIndividuals}
-                      onChange={(e) => setShowIndividuals(e.target.checked)}
+                      onChange={(e) => { dropClaimable(); setShowIndividuals(e.target.checked); }}
                       style={{ display: 'none' }}
                     />
                     Individuals
@@ -370,7 +425,7 @@ function SearchPage() {
                     <input
                       type="checkbox"
                       checked={showOrganizations}
-                      onChange={(e) => setShowOrganizations(e.target.checked)}
+                      onChange={(e) => { dropClaimable(); setShowOrganizations(e.target.checked); }}
                       style={{ display: 'none' }}
                     />
                     Organizations
@@ -401,7 +456,7 @@ function SearchPage() {
                     <button
                       key={v}
                       className={`filter-pill ${genderFilter === v ? 'selected' : ''}`}
-                      onClick={() => setGenderFilter(v)}
+                      onClick={() => { if (v !== genderFilter) dropClaimable(); setGenderFilter(v); }}
                     >
                       {label}
                     </button>
@@ -417,7 +472,7 @@ function SearchPage() {
                     max={120}
                     placeholder="Min"
                     value={ageMin}
-                    onChange={(e) => setAgeMin(e.target.value)}
+                    onChange={(e) => { dropClaimable(); setAgeMin(e.target.value); }}
                     className="age-filter-input"
                   />
                   <span className="age-filter-sep">–</span>
@@ -427,7 +482,7 @@ function SearchPage() {
                     max={120}
                     placeholder="Max"
                     value={ageMax}
-                    onChange={(e) => setAgeMax(e.target.value)}
+                    onChange={(e) => { dropClaimable(); setAgeMax(e.target.value); }}
                     className="age-filter-input"
                   />
                 </div>
@@ -611,7 +666,7 @@ function SearchPage() {
         }
 
         .search-content {
-          max-width: 600px;
+          max-width: var(--content-max-width);
           margin: 0 auto;
           padding: 6px 24px 24px;
         }

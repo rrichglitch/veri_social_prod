@@ -23,6 +23,7 @@ export interface SearchResult {
   email: string;
   fullName: string;
   profilePicture: string;
+  fullPicture?: string;
   city: string;
   description: string;
   locationLat?: number;
@@ -69,7 +70,10 @@ async function callStdbSearch(params: Record<string, unknown>): Promise<{
     orgId: r.orgId !== undefined && r.orgId !== null ? BigInt(r.orgId) : undefined,
     email: r.email || '',
     fullName: r.fullName || '',
-    profilePicture: r.profilePicture || '',
+    // Bandwidth: list cards + map markers use the 10KB thumbnail; the S3
+    // URL (or legacy base64) rides separately for swipe backgrounds.
+    profilePicture: r.profilePictureSmall || r.profilePicture || '',
+    fullPicture: r.profilePictureUrl || r.profilePicture || '',
     city: r.city || '',
     description: r.description || '',
     locationLat: r.locationLat ?? undefined,

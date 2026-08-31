@@ -10,14 +10,16 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  name: __t.string(),
-  picture: __t.string(),
-  pictureSmall: __t.option(__t.string()),
-  pictureUrl: __t.option(__t.string()),
+import {
+  RecordPendingRegistrationResult,
+} from "./types";
+
+export const params = {
+  email: __t.string(),
+  profilePictureSmall: __t.string(),
+  profilePictureUrl: __t.string(),
   city: __t.string(),
   description: __t.string(),
-  locationLat: __t.option(__t.f64()),
-  locationLng: __t.option(__t.f64()),
-  locationPrecision: __t.option(__t.string()),
+  diditSessionId: __t.string(),
 };
+export const returnType = RecordPendingRegistrationResult

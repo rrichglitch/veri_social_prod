@@ -11,6 +11,7 @@ export interface SwipeResult {
   orgId?: bigint;
   email: string;
   fullName: string;
+  fullPicture?: string;
   profilePicture: string;
   city: string;
   description: string;
@@ -326,8 +327,8 @@ function SwipeView({ results, myIdentity, activeOrgId, isDesktop, onIndexChange 
             onPointerDown={(e) => { tapStartRef.current = { x: e.clientX, y: e.clientY, t: Date.now() }; }}
             onClick={handleCardTap(r)}
           >
-            {r.profilePicture ? (
-              <img src={r.profilePicture} alt={r.fullName} className="swipe-bg" draggable={false} />
+            {r.fullPicture || r.profilePicture ? (
+              <img src={r.fullPicture || r.profilePicture} alt={r.fullName} className="swipe-bg" draggable={false} />
             ) : (
               <div className="swipe-bg-placeholder" />
             )}

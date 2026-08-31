@@ -1,7 +1,9 @@
 import { useRef, useState, type ReactNode } from 'react';
+import PictureZoom from './PictureZoom';
 
 interface ProfileDetailsProps {
   picture: string;
+  fullPicture?: string;     // full-size (S3 URL) — clicking the pic zooms into this
   name: string;
   city: string;
   description: string;
@@ -22,12 +24,13 @@ interface ProfileDetailsProps {
 // truth for the top info section: picture | name, Location + Update, extra
 // children, editable description, footer. Both profile pages render exactly this.
 function ProfileDetails({
-  picture, name, city, description, age, gender,
+  picture, fullPicture, name, city, description, age, gender,
   onUpdateLocation, isLocationUpdating, onSaveDescription, onSaveAgeGender,
   onPictureClick, pictureExtra, showLocationUpdate = true, children, footer,
 }: ProfileDetailsProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
+  const [zoom, setZoom] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -99,8 +102,8 @@ function ProfileDetails({
             <img
               src={picture}
               alt={name}
-              className={`profile-picture${onPictureClick ? ' clickable' : ''}`}
-              onClick={onPictureClick}
+              className={`profile-picture${onPictureClick || fullPicture ? ' clickable' : ''}`}
+              onClick={onPictureClick ?? (fullPicture ? () => setZoom(fullPicture) : undefined)}
             />
           ) : (
             <div className={`profile-picture-placeholder${onPictureClick ? ' clickable' : ''}`} onClick={onPictureClick} />
@@ -193,10 +196,11 @@ function ProfileDetails({
             </div>
           )}
         </div>
-        {footer}
-      </div>
-      <style>{`
-        /* ── Top info section — shared by individual AND org profiles ── */
+              {footer}
+              </div>
+              {zoom && <PictureZoom src={zoom} name={name} onClose={() => setZoom(null)} />}
+              <style>{`
+                /* ── Top info section — shared by individual AND org profiles ── */
         .profile-header { display: flex; gap: 20px; align-items: flex-start; }
         .profile-pic-wrapper { display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .profile-picture-container { position: relative; flex-shrink: 0; }

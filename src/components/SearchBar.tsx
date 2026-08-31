@@ -115,6 +115,7 @@ function SearchBar({ onSearch, value, onChange, autoFocus, placeholder, classNam
         <button
           type="button"
           onClick={toggleStar}
+          onMouseDown={(e) => e.preventDefault()}
           className={`search-star-btn ${starActive ? 'active' : ''}`}
           aria-label="Save search"
         >
@@ -178,16 +179,20 @@ function SearchBar({ onSearch, value, onChange, autoFocus, placeholder, classNam
               </button>
               {!s.saved && (
                 <button
+                  type="button"
                   className="suggestion-x"
                   aria-label="Delete search"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setHist(deleteSearch(id, s.q))}
                 >
                   ✕
                 </button>
               )}
               <button
+                type="button"
                 className={`suggestion-star ${s.saved ? 'active' : ''}`}
                 aria-label={s.saved ? 'Unsave search' : 'Save search'}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setHist(toggleSaveSearch(id, s.q))}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill={s.saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round">

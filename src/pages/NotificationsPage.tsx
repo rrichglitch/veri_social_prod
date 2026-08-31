@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { currentUserEmail } from '../utils/authState';
 import TopBar from '../components/TopBar';
-import { getNotifications, resolveNotification, acceptFriendRequest, declineFriendRequest, getProfileByEmail } from '../utils/spacetime';
+import { getNotifications, resolveNotification, acceptFriendRequest, declineFriendRequest, getProfileRowByEmail } from '../utils/spacetime';
 import AuthActions from '../components/AuthActions';
 import { useOrg } from '../contexts/OrgContext';
 
@@ -23,7 +23,7 @@ function NotificationsPage() {
     const email = currentUserEmail();
     if (!email) return;
     try {
-      getProfileByEmail(email).then(p => {
+      Promise.resolve(getProfileRowByEmail(email)).then(p => {
         if (p) {
           const id = p.identity.toHexString();
           setCurrentIdentity(id);
@@ -61,6 +61,7 @@ function NotificationsPage() {
       setNotifs(prev => prev.filter(n => !(n.type === 'friend_request' && n.referenceId === refId)));
     } catch (e: any) {
       alert(e?.message || 'Failed to accept. Please try again.');
+    } finally {
       setBusy(null);
     }
   };
@@ -73,6 +74,7 @@ function NotificationsPage() {
       setNotifs(prev => prev.filter(n => !(n.type === 'friend_request' && n.referenceId === refId)));
     } catch (e: any) {
       alert(e?.message || 'Failed to decline. Please try again.');
+    } finally {
       setBusy(null);
     }
   };
@@ -143,7 +145,7 @@ function NotificationsPage() {
 
       <style>{`
         .notif-page { min-height: 100vh; background: #f5f5f5; }
-        .main-content { max-width: 600px; margin: 0 auto; padding: 24px; }
+        .main-content { max-width: var(--content-max-width); margin: 0 auto; padding: 24px; }
         .notif-section { margin-bottom: 24px; }
         .notif-section h3 { margin: 0 0 12px; color: #333; font-size: 16px; }
         .notif-card { background: white; border-radius: 8px; padding: 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }

@@ -229,7 +229,7 @@ function TermsOfServicePage() {
         }
         .terms-content {
           flex: 1;
-          max-width: 800px;
+          max-width: var(--content-max-width);
           margin: 0 auto;
           padding: 40px 24px;
           background: #fff;
@@ -283,7 +283,6 @@ function TermsOfServicePage() {
         }
         .topbar-search-wrap {
           width: 100%;
-          max-width: 400px;
         }
         @media (max-width: 600px) {
           .terms-content {

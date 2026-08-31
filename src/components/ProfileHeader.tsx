@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 
 import FollowButton from './FollowButton';
+import PictureZoom from './PictureZoom';
 import { sendFriendRequest, cancelFriendRequest, unfriend, checkIsFriend, getFriendRequestStatus } from '../utils/spacetime';
 import { useOrg } from '../contexts/OrgContext';
 
@@ -17,6 +18,8 @@ interface UserProfile {
 
 interface ProfileHeaderProps {
   profile: UserProfile;
+  /** Full-size (S3 URL) — clicking the pic zooms into this. */
+  fullPicture?: string;
   isOwnProfile: boolean;
   isFollowing: boolean;
   onFollowChange: (following: boolean) => void;
@@ -26,10 +29,16 @@ interface ProfileHeaderProps {
   isOrgProfile?: boolean;
   onJoinRequest?: () => void;
   requestPending?: boolean;
+  /** Viewer is a member of the org (≡ friends with the org identity). */
+  isOrgMember?: boolean;
+  /** Viewer leads the org — Join/Leave don't apply. */
+  isOrgLeader?: boolean;
+  onLeaveOrg?: () => void;
 }
 
 function ProfileHeader({
   profile,
+  fullPicture,
   isOwnProfile,
   isFollowing,
   onFollowChange,
@@ -39,9 +48,13 @@ function ProfileHeader({
   isOrgProfile,
   onJoinRequest,
   requestPending,
+  isOrgMember,
+  isOrgLeader,
+  onLeaveOrg,
 }: ProfileHeaderProps) {
   const { activeOrg } = useOrg();
   const [tick, setTick] = useState(0);
+  const [zoom, setZoom] = useState<string | null>(null);
   const [optimisticSent, setOptimisticSent] = useState(false);
   const refresh = () => setTick(t => t + 1);
   void tick;
@@ -95,14 +108,17 @@ function ProfileHeader({
     <div className="profile-header">
       <div className="profile-picture-container">
         {profile.profile_picture ? (
-          <img src={profile.profile_picture} alt={profile.full_name} className={`profile-picture ${onPictureClick ? 'clickable' : ''}`} onClick={onPictureClick} />
+          <img src={profile.profile_picture} alt={profile.full_name} className={`profile-picture ${onPictureClick || fullPicture ? 'clickable' : ''}`} onClick={onPictureClick ?? (fullPicture ? () => setZoom(fullPicture) : undefined)} />
         ) : (
           <div className={`profile-picture-placeholder ${onPictureClick ? 'clickable' : ''}`} onClick={onPictureClick} />
         )}
       </div>
 
       <div className="profile-info">
-        <h2 className="profile-name">{profile.full_name}</h2>
+        <div className="profile-name-row">
+          <h2 className="profile-name">{profile.full_name}</h2>
+          {isOrgProfile && <span className="org-badge">Organization</span>}
+        </div>
         {profile.city && <p className="profile-city">{profile.city}</p>}
         {(() => {
           const line = [profile.age !== undefined ? `${profile.age}` : '', profile.gender ? profile.gender.charAt(0).toUpperCase() + profile.gender.slice(1) : ''].filter(Boolean).join(' · ');
@@ -117,10 +133,25 @@ function ProfileHeader({
         ) : isOrgProfile ? (
           activeOrg ? (
             <span className="profile-note">Organizations cannot join other organizations</span>
+          ) : isOrgLeader ? (
+            // The leader follows the org like anyone else (their identity
+            // differs from the org account). Join/Leave don't apply — the
+            // leader can't leave via unfriend (backend blocks it).
+            <>
+              <FollowButton targetIdentity={profile.identity} isFollowing={isFollowing} onFollowChange={onFollowChange} />
+              <span className="profile-note">You lead this organization</span>
+            </>
           ) : (
-            <button onClick={onJoinRequest} disabled={requestPending} className="follow-button">
-              {requestPending ? 'Request Pending' : 'Request to Join'}
-            </button>
+            <>
+              <FollowButton targetIdentity={profile.identity} isFollowing={isFollowing} onFollowChange={onFollowChange} />
+              {isOrgMember ? (
+                <button onClick={onLeaveOrg} className="unfriend-btn">Leave</button>
+              ) : requestPending ? (
+                <button disabled className="friend-request-btn" style={{ opacity: 0.6, cursor: 'not-allowed' }}>Request Pending</button>
+              ) : (
+                <button onClick={onJoinRequest} className="friend-request-btn">Join</button>
+              )}
+            </>
           )
         ) : isFriend ? (
           <>
@@ -139,6 +170,8 @@ function ProfileHeader({
           </>
         )}
       </div>
+
+      {zoom && <PictureZoom src={zoom} name={profile.full_name} onClose={() => setZoom(null)} />}
 
       <style>{`
         .profile-header {
@@ -164,7 +197,20 @@ function ProfileHeader({
         .profile-picture.clickable, .profile-picture-placeholder.clickable { cursor: pointer; transition: transform 0.2s; }
         .profile-picture.clickable:hover, .profile-picture-placeholder.clickable:hover { transform: scale(1.05); }
         .profile-info { margin-bottom: 16px; }
+        .profile-name-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
         .profile-name { margin: 0 0 4px; font-size: 24px; color: #333; }
+        .org-badge {
+          display: inline-block;
+          padding: 2px 10px;
+          background: #eef2ff;
+          color: #667eea;
+          border: 1px solid #c7d2fe;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.3px;
+          white-space: nowrap;
+        }
         .profile-city { margin: 0 0 8px; color: #666; font-size: 14px; }
         .profile-description { margin: 0; color: #444; font-size: 14px; line-height: 1.5; max-width: 400px; }
         .profile-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }

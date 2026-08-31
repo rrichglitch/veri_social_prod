@@ -11,10 +11,10 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  recipient: __t.identity(),
-  boxId: __t.identity().name("box_id"),
-  nonce: __t.string(),
-  resultsJson: __t.string().name("results_json"),
-  reranked: __t.bool(),
+  id: __t.u64().primaryKey(),
+  ownerIdentity: __t.identity().name("owner_identity"),
+  s3Key: __t.string().name("s_3_key"),
+  url: __t.string(),
+  bytes: __t.u64(),
   createdAt: __t.timestamp().name("created_at"),
 });

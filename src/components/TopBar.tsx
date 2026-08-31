@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 interface TopBarProps {
   left?: ReactNode;
@@ -6,13 +6,23 @@ interface TopBarProps {
   right?: ReactNode;
   className?: string;
   absoluteCenter?: boolean;
+  /** Desktop width of the absolutely-centered slot, in px. When set, the
+   * search bar matches the page's content column width instead of the
+   * 420px default. */
+  centerWidth?: number;
 }
 
-function TopBar({ left, center, right, className = '', absoluteCenter = false }: TopBarProps) {
+function TopBar({ left, center, right, className = '', absoluteCenter = false, centerWidth }: TopBarProps) {
+  const centerStyle = centerWidth
+    ? ({ ['--topbar-center-width' as string]: `${centerWidth}px` } as CSSProperties)
+    : undefined;
   return (
     <header className={`topbar ${className}`}>
       <div className="topbar-left">{left}</div>
-      <div className={`topbar-center ${absoluteCenter ? 'topbar-center-absolute' : ''}`}>{center}</div>
+      <div
+        className={`topbar-center ${absoluteCenter ? 'topbar-center-absolute' : ''}`}
+        style={centerStyle}
+      >{center}</div>
       <div className="topbar-right">{right}</div>
 
       <style>{`
@@ -46,14 +56,16 @@ function TopBar({ left, center, right, className = '', absoluteCenter = false }:
           min-width: 0;
         }
         .topbar-search-wrap { width: 100%; }
-        /* Desktop: absolutely center the search bar on the screen */
+        /* Desktop: absolutely center the search bar on the screen; it matches
+           the page content column via the global --content-column-width token
+           (or a per-page --topbar-center-width override). */
         .topbar-center-absolute { position: static; }
         @media (min-width: 768px) {
           .topbar-center-absolute {
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            width: min(420px, 45vw);
+            width: min(var(--topbar-center-width, var(--content-column-width)), 55vw);
             flex: none;
           }
         }

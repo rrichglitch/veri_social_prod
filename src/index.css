@@ -12,6 +12,15 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Global layout tokens (site-wide, adopted 2026-08-28):
+     --content-max-width: page content column width — the About page's
+        desktop width, preferred for ALL pages.
+     --content-column-width: the visible column inside a container after its
+        side padding (24px each side) — cards AND the topbar search bar share
+        this so they always align exactly. */
+  --content-max-width: 700px;
+  --content-column-width: calc(var(--content-max-width) - 48px);
 }
 
 body {

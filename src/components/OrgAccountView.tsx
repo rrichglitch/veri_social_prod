@@ -4,12 +4,15 @@ import { useOrg, type ActiveOrg } from '../contexts/OrgContext';
 import { currentUserEmail } from '../utils/authState';
 import { getOAuthSession } from '../utils/oauthSession';
 import { QRCodeSVG } from 'qrcode.react';
-import { getProfileByEmail, getMyStoryPosts, getMyPosts, getOrganizationMembers, getOrganizationById, promoteToCoLeader, demoteCoLeader, transferLeadership, connectToSpacetimeDB, updateOrganization, updateOrgLocation, jitterOrgToApprox } from '../utils/spacetime';
+import { getProfileRowByEmail, getMyStoryPosts, getMyPosts, getOrganizationMembers, getOrganizationById, promoteToCoLeader, demoteCoLeader, transferLeadership, connectToSpacetimeDB, updateOrganization, updateOrgLocation, jitterOrgToApprox, deleteOrganization } from '../utils/spacetime';
 import { getBrowserLocation, jitterLocation, reverseGeocode } from '../utils/geo';
 import PreciseLocationToggle from './PreciseLocationToggle';
+import ProfileSettingsTab from './ProfileSettingsTab';
+import ConfirmTypeModal from './ConfirmTypeModal';
 import ProfileDetails from './ProfileDetails';
 import ProfileTabs from './ProfileTabs';
 import HideToggle from './HideToggle';
+import Gallery from './Gallery';
 import TopBar from '../components/TopBar';
 import AuthActions from '../components/AuthActions';
 
@@ -26,9 +29,10 @@ function OrgAccountView() {
   const [myRole, setMyRole] = useState<string | null>(null);
   const [stories, setStories] = useState<any[]>([]);
   const [myPosts, setMyPosts] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'story' | 'posts' | 'members'>('story');
+  const [activeTab, setActiveTab] = useState<'story' | 'posts' | 'members' | 'settings'>('story');
   const [createdAt, setCreatedAt] = useState<Date | null>(null);
   const [showQR, setShowQR] = useState(false);
+  const [showDeleteOrgModal, setShowDeleteOrgModal] = useState(false);
 
   const refreshOrg = async () => {
     if (!org) return;
@@ -46,7 +50,7 @@ function OrgAccountView() {
     try {
       const userEmail = currentUserEmail();
       if (userEmail) {
-        const profile = await getProfileByEmail(userEmail);
+        const profile = getProfileRowByEmail(userEmail);
         if (profile) {
           const myHex = profile.identity.toHexString();
           const mine = getOrganizationMembers(org.id).find((m: any) => m.identity === myHex);
@@ -103,7 +107,7 @@ function OrgAccountView() {
   const handleHideMembersToggle = async (checked: boolean) => {
     setIsUpdatingHide(true);
     try {
-      await updateOrganization(org.id, undefined, undefined, undefined, undefined, undefined, checked);
+      await updateOrganization(org.id, undefined, undefined, undefined, undefined, undefined, undefined, undefined, checked);
       setHideMembers(checked);
     } catch (e: any) {
       alert(e?.message || 'Failed to update');
@@ -119,6 +123,14 @@ function OrgAccountView() {
     setOrgPrecision('exact');
   };
 
+  // Settings tab: permanently delete the org (leader only). After the reducer
+  // lands, drop the org session and land on the individual's own /me.
+  const handleDeleteOrg = async () => {
+    await deleteOrganization(org.id);
+    logoutOrg();
+    navigate('/me', { replace: true });
+  };
+
   const handleOrgToggleDisable = async () => {
     // Toggle OFF: backend jitters the last stored precise org location
     await jitterOrgToApprox(org.id);
@@ -132,7 +144,7 @@ function OrgAccountView() {
       const pos = await getBrowserLocation();
       const city = await reverseGeocode(pos.lat, pos.lng);
       if (city) {
-        await updateOrganization(org.id, undefined, city, undefined);
+        await updateOrganization(org.id, undefined, undefined, undefined, city);
       }
       const isExact = orgPrecision === 'exact';
       const toSend = isExact ? pos : jitterLocation(pos.lat, pos.lng, 5);
@@ -157,7 +169,8 @@ function OrgAccountView() {
       <main className="main-content">
         <div className="profile-section">
           <ProfileDetails
-            picture={orgData?.picture || org.picture || ''}
+            picture={orgData?.pictureSmall || orgData?.picture || org.picture || ''}
+            fullPicture={orgData?.pictureUrl || orgData?.picture || org.picture || ''}
             name={orgData?.name || org.name}
             city={orgData?.city || org.city || ''}
             description={orgData?.description || ''}
@@ -165,12 +178,12 @@ function OrgAccountView() {
             isLocationUpdating={false}
             showLocationUpdate={canManage}
             onSaveDescription={async (v) => {
-              await updateOrganization(org.id, undefined, undefined, v);
+              await updateOrganization(org.id, undefined, undefined, undefined, undefined, v);
               await refreshOrg();
             }}
             gender={orgData?.gender}
             onSaveAgeGender={async (_b, g) => {
-              await updateOrganization(org.id, undefined, undefined, undefined, undefined, undefined, undefined, g);
+              await updateOrganization(org.id, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, g);
               await refreshOrg();
             }}
             pictureExtra={<button onClick={() => setShowQR(true)} className="share-btn-under-pic">Share</button>}
@@ -181,13 +194,13 @@ function OrgAccountView() {
           </ProfileDetails>
         </div>
 
-        {canManage && (
-          <PreciseLocationToggle
-            isExact={orgPrecision === 'exact'}
-            onEnable={handleOrgToggleEnable}
-            onDisable={handleOrgToggleDisable}
-          />
-        )}
+        {/* Gallery — right under the top info section (org account owns via acting-as-org) */}
+        <Gallery
+          ownerIdentityHex={org.identity}
+          isOwn
+          actingAsOrgId={org.id}
+          actingAsOrgIdentityHex={org.identity}
+        />
 
         {showQR && (
           <div className="qr-modal" onClick={() => setShowQR(false)}>
@@ -212,6 +225,7 @@ function OrgAccountView() {
               { key: 'story', label: 'Story' },
               { key: 'posts', label: 'Posts' },
               { key: 'members', label: 'Members' },
+              { key: 'settings', label: 'Settings' },
             ]}
             active={activeTab}
             onChange={(k) => setActiveTab(k as any)}
@@ -263,6 +277,18 @@ function OrgAccountView() {
                 />
               )}
             </div>
+          ) : activeTab === 'settings' ? (
+            <ProfileSettingsTab
+              locationControl={canManage ? (
+                <PreciseLocationToggle
+                  isExact={orgPrecision === 'exact'}
+                  onEnable={handleOrgToggleEnable}
+                  onDisable={handleOrgToggleDisable}
+                />
+              ) : null}
+              dangerLabel={myRole === 'leader' ? 'Delete This Organization' : undefined}
+              onDanger={() => setShowDeleteOrgModal(true)}
+            />
           ) : activeTab === 'story' ? (
             <>
               <div className="no-post-own-story">
@@ -330,8 +356,19 @@ function OrgAccountView() {
         </div>
       </main>
 
+      {showDeleteOrgModal && (
+        <ConfirmTypeModal
+          title="Delete This Organization?"
+          warning="This permanently deletes the organization, its members, membership requests, and chat messages. This cannot be undone."
+          phrase="Delete My Organization"
+          confirmLabel="Delete My Organization"
+          onConfirm={handleDeleteOrg}
+          onCancel={() => setShowDeleteOrgModal(false)}
+        />
+      )}
+
       <style>{`
-        .main-content { max-width: 600px; margin: 0 auto; padding: 24px; }
+        .main-content { max-width: var(--content-max-width); margin: 0 auto; padding: 24px; }
         .profile-section { background: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
         .join-date { margin: 8px 0 0; font-size: 13px; color: #999; }
         .members-tab-card { background: white; border-radius: 12px; padding: 8px 20px; margin-top: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }

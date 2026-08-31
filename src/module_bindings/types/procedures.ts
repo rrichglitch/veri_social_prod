@@ -8,27 +8,33 @@ import { type Infer as __Infer } from "spacetimedb";
 // Import all procedure arg schemas
 import * as CheckDiditVerificationProcedure from "../check_didit_verification_procedure";
 import * as CreateVerifiedProfileProcedure from "../create_verified_profile_procedure";
+import * as GalleryUploadCountTodayProcedure from "../gallery_upload_count_today_procedure";
 import * as GetPendingRegistrationProcedure from "../get_pending_registration_procedure";
 import * as GetProfileByEmailProcedure from "../get_profile_by_email_procedure";
 import * as GetProfileByIdentityProcedure from "../get_profile_by_identity_procedure";
-import * as InitiateDiditVerificationProcedure from "../initiate_didit_verification_procedure";
 import * as OauthClaimProfileProcedure from "../oauth_claim_profile_procedure";
+import * as RecordPendingRegistrationProcedure from "../record_pending_registration_procedure";
 import * as SearchProfilesProcedure from "../search_profiles_procedure";
+import * as WhoamiProcedure from "../whoami_procedure";
 
 export type CheckDiditVerificationArgs = __Infer<typeof CheckDiditVerificationProcedure.params>;
 export type CheckDiditVerificationResult = __Infer<typeof CheckDiditVerificationProcedure.returnType>;
 export type CreateVerifiedProfileArgs = __Infer<typeof CreateVerifiedProfileProcedure.params>;
 export type CreateVerifiedProfileResult = __Infer<typeof CreateVerifiedProfileProcedure.returnType>;
+export type GalleryUploadCountTodayArgs = __Infer<typeof GalleryUploadCountTodayProcedure.params>;
+export type GalleryUploadCountTodayResult = __Infer<typeof GalleryUploadCountTodayProcedure.returnType>;
 export type GetPendingRegistrationArgs = __Infer<typeof GetPendingRegistrationProcedure.params>;
 export type GetPendingRegistrationResult = __Infer<typeof GetPendingRegistrationProcedure.returnType>;
 export type GetProfileByEmailArgs = __Infer<typeof GetProfileByEmailProcedure.params>;
 export type GetProfileByEmailResult = __Infer<typeof GetProfileByEmailProcedure.returnType>;
 export type GetProfileByIdentityArgs = __Infer<typeof GetProfileByIdentityProcedure.params>;
 export type GetProfileByIdentityResult = __Infer<typeof GetProfileByIdentityProcedure.returnType>;
-export type InitiateDiditVerificationArgs = __Infer<typeof InitiateDiditVerificationProcedure.params>;
-export type InitiateDiditVerificationResult = __Infer<typeof InitiateDiditVerificationProcedure.returnType>;
 export type OauthClaimProfileArgs = __Infer<typeof OauthClaimProfileProcedure.params>;
 export type OauthClaimProfileResult = __Infer<typeof OauthClaimProfileProcedure.returnType>;
+export type RecordPendingRegistrationArgs = __Infer<typeof RecordPendingRegistrationProcedure.params>;
+export type RecordPendingRegistrationResult = __Infer<typeof RecordPendingRegistrationProcedure.returnType>;
 export type SearchProfilesArgs = __Infer<typeof SearchProfilesProcedure.params>;
 export type SearchProfilesResult = __Infer<typeof SearchProfilesProcedure.returnType>;
+export type WhoamiArgs = __Infer<typeof WhoamiProcedure.params>;
+export type WhoamiResult = __Infer<typeof WhoamiProcedure.returnType>;
 

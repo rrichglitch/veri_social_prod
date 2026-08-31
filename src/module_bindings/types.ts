@@ -31,6 +31,13 @@ export const CreateVerifiedProfileResult = __t.object("CreateVerifiedProfileResu
 });
 export type CreateVerifiedProfileResult = __Infer<typeof CreateVerifiedProfileResult>;
 
+export const DiditAttempt = __t.object("DiditAttempt", {
+  identity: __t.identity(),
+  windowStart: __t.timestamp(),
+  attempts: __t.u8(),
+});
+export type DiditAttempt = __Infer<typeof DiditAttempt>;
+
 export const FeedPosition = __t.object("FeedPosition", {
   identity: __t.identity(),
   lastReadAt: __t.timestamp(),
@@ -82,12 +89,20 @@ export const Friendship = __t.object("Friendship", {
 });
 export type Friendship = __Infer<typeof Friendship>;
 
-export const InitiateDiditResult = __t.object("InitiateDiditResult", {
-  success: __t.bool(),
-  url: __t.option(__t.string()),
-  error: __t.option(__t.string()),
+export const GalleryPhoto = __t.object("GalleryPhoto", {
+  id: __t.u64(),
+  ownerIdentity: __t.identity(),
+  s3Key: __t.string(),
+  url: __t.string(),
+  bytes: __t.u64(),
+  createdAt: __t.timestamp(),
 });
-export type InitiateDiditResult = __Infer<typeof InitiateDiditResult>;
+export type GalleryPhoto = __Infer<typeof GalleryPhoto>;
+
+export const GalleryUploadCountResult = __t.object("GalleryUploadCountResult", {
+  count: __t.u32(),
+});
+export type GalleryUploadCountResult = __Infer<typeof GalleryUploadCountResult>;
 
 export const LastPost = __t.object("LastPost", {
   posterIdentity: __t.identity(),
@@ -115,6 +130,9 @@ export type MonthlyVerificationCap = __Infer<typeof MonthlyVerificationCap>;
 
 export const MyFeed = __t.object("MyFeed", {});
 export type MyFeed = __Infer<typeof MyFeed>;
+
+export const MyOrgClaimFee = __t.object("MyOrgClaimFee", {});
+export type MyOrgClaimFee = __Infer<typeof MyOrgClaimFee>;
 
 export const MyProSubscription = __t.object("MyProSubscription", {});
 export type MyProSubscription = __Infer<typeof MyProSubscription>;
@@ -152,6 +170,21 @@ export const OAuthClaimResult = __t.object("OAuthClaimResult", {
 });
 export type OAuthClaimResult = __Infer<typeof OAuthClaimResult>;
 
+export const OrgClaimFee = __t.object("OrgClaimFee", {
+  identity: __t.identity(),
+  amountCents: __t.u32(),
+  stripeSessionId: __t.string(),
+  paidAt: __t.timestamp(),
+  consumed: __t.bool(),
+});
+export type OrgClaimFee = __Infer<typeof OrgClaimFee>;
+
+export const OrgClaimFeeInfo = __t.object("OrgClaimFeeInfo", {
+  amountCents: __t.u32(),
+  paidAt: __t.timestamp(),
+});
+export type OrgClaimFeeInfo = __Infer<typeof OrgClaimFeeInfo>;
+
 export const OrgMemberRequest = __t.object("OrgMemberRequest", {
   id: __t.u64(),
   orgId: __t.u64(),
@@ -176,6 +209,8 @@ export const Organization = __t.object("Organization", {
   hideMembers: __t.bool(),
   birthday: __t.option(__t.string()),
   gender: __t.option(__t.string()),
+  pictureSmall: __t.option(__t.string()),
+  pictureUrl: __t.option(__t.string()),
 });
 export type Organization = __Infer<typeof Organization>;
 
@@ -199,6 +234,8 @@ export const PendingRegistration = __t.object("PendingRegistration", {
   createdAt: __t.timestamp(),
   profilePicture: __t.string(),
   diditSelfieImage: __t.string(),
+  profilePictureSmall: __t.option(__t.string()),
+  profilePictureUrl: __t.option(__t.string()),
 });
 export type PendingRegistration = __Infer<typeof PendingRegistration>;
 
@@ -210,8 +247,17 @@ export const PendingRegistrationState = __t.object("PendingRegistrationState", {
   city: __t.option(__t.string()),
   description: __t.option(__t.string()),
   profilePicture: __t.option(__t.string()),
+  profilePictureSmall: __t.option(__t.string()),
+  profilePictureUrl: __t.option(__t.string()),
 });
 export type PendingRegistrationState = __Infer<typeof PendingRegistrationState>;
+
+export const PostDailyCount = __t.object("PostDailyCount", {
+  identity: __t.identity(),
+  day: __t.u32(),
+  count: __t.u16(),
+});
+export type PostDailyCount = __Infer<typeof PostDailyCount>;
 
 export const ProSubscription = __t.object("ProSubscription", {
   identity: __t.identity(),
@@ -239,12 +285,15 @@ export const ProfileByEmailResult = __t.object("ProfileByEmailResult", {
   city: __t.option(__t.string()),
   description: __t.option(__t.string()),
   profilePicture: __t.option(__t.string()),
+  profilePictureSmall: __t.option(__t.string()),
+  profilePictureUrl: __t.option(__t.string()),
   locationLat: __t.option(__t.f64()),
   locationLng: __t.option(__t.f64()),
   locationPrecision: __t.option(__t.string()),
   gender: __t.option(__t.string()),
   age: __t.option(__t.u8()),
   hideFriends: __t.bool(),
+  disabled: __t.bool(),
   createdAtMicros: __t.option(__t.i64()),
   isPro: __t.bool(),
 });
@@ -258,12 +307,15 @@ export const ProfileByIdentityResult = __t.object("ProfileByIdentityResult", {
   city: __t.option(__t.string()),
   description: __t.option(__t.string()),
   profilePicture: __t.option(__t.string()),
+  profilePictureSmall: __t.option(__t.string()),
+  profilePictureUrl: __t.option(__t.string()),
   locationLat: __t.option(__t.f64()),
   locationLng: __t.option(__t.f64()),
   locationPrecision: __t.option(__t.string()),
   gender: __t.option(__t.string()),
   age: __t.option(__t.u8()),
   hideFriends: __t.bool(),
+  disabled: __t.bool(),
   createdAtMicros: __t.option(__t.i64()),
   isPro: __t.bool(),
 });
@@ -277,6 +329,12 @@ export const PushSubscription = __t.object("PushSubscription", {
   createdAt: __t.timestamp(),
 });
 export type PushSubscription = __Infer<typeof PushSubscription>;
+
+export const RecordPendingRegistrationResult = __t.object("RecordPendingRegistrationResult", {
+  success: __t.bool(),
+  error: __t.option(__t.string()),
+});
+export type RecordPendingRegistrationResult = __Infer<typeof RecordPendingRegistrationResult>;
 
 export const SearchAllowance = __t.object("SearchAllowance", {
   identity: __t.identity(),
@@ -342,6 +400,8 @@ export const SearchResultItem = __t.object("SearchResultItem", {
   email: __t.string(),
   fullName: __t.string(),
   profilePicture: __t.string(),
+  profilePictureSmall: __t.string(),
+  profilePictureUrl: __t.string(),
   city: __t.string(),
   description: __t.string(),
   locationLat: __t.option(__t.f64()),
@@ -387,6 +447,9 @@ export const UserProfile = __t.object("UserProfile", {
   birthday: __t.option(__t.string()),
   gender: __t.option(__t.string()),
   age: __t.option(__t.u8()),
+  disabled: __t.bool(),
+  profilePictureSmall: __t.option(__t.string()),
+  profilePictureUrl: __t.option(__t.string()),
 });
 export type UserProfile = __Infer<typeof UserProfile>;
 
@@ -405,4 +468,10 @@ export const VerifiedIdentity = __t.object("VerifiedIdentity", {
   diditSelfieImage: __t.string(),
 });
 export type VerifiedIdentity = __Infer<typeof VerifiedIdentity>;
+
+export const WhoAmIResult = __t.object("WhoAmIResult", {
+  identityHex: __t.string(),
+  authenticated: __t.bool(),
+});
+export type WhoAmIResult = __Infer<typeof WhoAmIResult>;
 

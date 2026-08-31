@@ -4,7 +4,7 @@ import { currentUserEmail } from '../utils/authState';
 import TopBar from '../components/TopBar';
 import { useOrg } from '../contexts/OrgContext';
 import AuthActions from '../components/AuthActions';
-import { getDirectMessages, sendDirectMessage, getProfileByIdentity, getProfileByEmail } from '../utils/spacetime';
+import { getDirectMessages, sendDirectMessage, getProfileByIdentity, getProfileRowByEmail } from '../utils/spacetime';
 
 function DMChatPage() {
   const { activeOrg } = useOrg();
@@ -21,7 +21,7 @@ function DMChatPage() {
     const init = async () => {
       const email = currentUserEmail();
       if (email) {
-        const p = await getProfileByEmail(email);
+        const p = await getProfileRowByEmail(email);
         if (p) setCurrentIdentity(p.identity.toHexString());
       }
       setOtherProfile(await getProfileByIdentity(otherId));
@@ -66,7 +66,9 @@ function DMChatPage() {
     <div className="chat-page">
       <TopBar
         left={<button onClick={() => navigate('/friends')} className="topbar-back">← Back</button>}
-        center={otherProfile?.profilePicture ? <Link to={`/profile/${otherProfile.identity}`}><img src={otherProfile.profilePicture} alt={otherProfile.fullName} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover'}} /></Link> : <span style={{fontWeight:600}}>{otherProfile?.fullName || 'Chat'}</span>}
+        center={otherProfile?.profilePictureSmall || otherProfile?.profilePicture ? (
+          <Link to={`/profile/${otherProfile.identity}`}><img src={otherProfile.profilePictureSmall || otherProfile.profilePicture} alt={otherProfile.fullName} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover'}} /></Link>
+        ) : <span style={{fontWeight:600}}>{otherProfile?.fullName || 'Chat'}</span>}
         absoluteCenter
         right={<AuthActions hideChat />}
       />
@@ -88,7 +90,7 @@ function DMChatPage() {
 
       <style>{`
         .chat-page { position: fixed; inset: 0; background: #f5f5f5; display: flex; flex-direction: column; }
-        .chat-main { flex: 1; display: flex; flex-direction: column; max-width: 600px; width: 100%; margin: 0 auto; padding: 0 16px; min-height: 0; }
+        .chat-main { flex: 1; display: flex; flex-direction: column; max-width: var(--content-max-width); width: 100%; margin: 0 auto; padding: 0 16px; min-height: 0; }
         .msg-list { flex: 1; overflow-y: auto; padding: 16px 0 8px; -webkit-overflow-scrolling: touch; min-height: 0; }
         .msg { margin-bottom: 8px; max-width: 75%; }
         .msg.mine { margin-left: auto; text-align: right; }
@@ -96,7 +98,7 @@ function DMChatPage() {
         .msg-text { background: white; padding: 10px 14px; border-radius: 16px; display: inline-block; color: #333; font-size: 15px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .msg.mine .msg-text { background: #667eea; color: white; }
         .msg-time { display: block; font-size: 11px; color: #999; margin-top: 2px; }
-        .msg-form { display: flex; gap: 8px; padding: 12px 0; background: #f5f5f5; max-width: 600px; width: 100%; margin: 0 auto; flex-shrink: 0; }
+        .msg-form { display: flex; gap: 8px; padding: 12px 0; background: #f5f5f5; max-width: var(--content-max-width); width: 100%; margin: 0 auto; flex-shrink: 0; }
         .msg-input { flex: 1; padding: 10px 14px; border: 1px solid #e0e0e0; border-radius: 24px; outline: none; font-size: 15px; background: white; }
         .msg-input:focus { border-color: #667eea; }
         .msg-send { padding: 6px 12px; display: flex; align-items: center; justify-content: center; background: #667eea; color: white; border: none; border-radius: 24px; font-weight: 600; cursor: pointer; }

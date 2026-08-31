@@ -10,11 +10,8 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  sender: __t.identity(),
-  boxId: __t.identity().name("box_id"),
-  nonce: __t.string(),
-  query: __t.string(),
-  paramsJson: __t.string().name("params_json"),
-  createdAt: __t.timestamp().name("created_at"),
-});
+export default {
+  photoId: __t.u64(),
+  actingAsOrgId: __t.option(__t.u64()),
+  actingAsOrgIdentity: __t.option(__t.identity()),
+};

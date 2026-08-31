@@ -68,8 +68,8 @@ export function formatRelativeTime(date: Date | string): string {
   return then.toLocaleDateString();
 }
 
-// Convert file to base64
-export function fileToBase64(file: File): Promise<string> {
+// Convert file (or compressed blob) to base64
+export function fileToBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);

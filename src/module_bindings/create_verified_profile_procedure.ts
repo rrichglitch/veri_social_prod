@@ -17,6 +17,8 @@ import {
 export const params = {
   sessionId: __t.string(),
   profilePicture: __t.string(),
+  profilePictureSmall: __t.string(),
+  profilePictureUrl: __t.string(),
   city: __t.string(),
   description: __t.string(),
   fullName: __t.string(),

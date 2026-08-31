@@ -1,6 +1,7 @@
 import { DbConnection, tables } from '../module_bindings';
 import { Identity, Timestamp } from 'spacetimedb';
-import { SPACETIMEDB_HOST, SPACETIMEDB_MODULE } from '../config';
+import { SPACETIMEDB_HOST, SPACETIMEDB_MODULE, IMAGES_RELAY_URL, DIDIT_RELAY_URL } from '../config';
+import { getOAuthSession } from './oauthSession';
 
 let dbConnection: DbConnection | null = null;
 let subscriptionPromise: Promise<void> | null = null;
@@ -129,9 +130,11 @@ async function subscribeToTables(): Promise<void> {
           tables.message,
           tables.organization,
           tables.organization_member,
+          tables.gallery_photo,
           'SELECT * FROM my_search_results',
           'SELECT * FROM my_search_allowance',
           'SELECT * FROM my_pro_subscription',
+          'SELECT * FROM my_org_claim_fee',
         ]);
     } catch (e) {
       console.error('Subscription error:', e);
@@ -175,12 +178,15 @@ export interface ProfileLookupRow {
   city: string;
   description: string;
   profilePicture: string;
+  profilePictureSmall: string;
+  profilePictureUrl: string;
   locationLat?: number;
   locationLng?: number;
   locationPrecision: string;
   gender?: string;
   age?: number;
   hideFriends: boolean;
+  disabled?: boolean;
   createdAtMicros?: bigint;
   isPro: boolean;
 }
@@ -194,15 +200,57 @@ function rowFromProcedure(r: any): ProfileLookupRow | null {
     city: r.city ?? '',
     description: r.description ?? '',
     profilePicture: r.profilePicture ?? '',
+    profilePictureSmall: r.profilePictureSmall ?? '',
+    profilePictureUrl: r.profilePictureUrl ?? '',
     locationLat: r.locationLat ?? undefined,
     locationLng: r.locationLng ?? undefined,
     locationPrecision: r.locationPrecision ?? 'off',
     gender: r.gender ?? undefined,
     age: r.age ?? undefined,
     hideFriends: !!r.hideFriends,
+    disabled: !!r.disabled,
     createdAtMicros: r.createdAtMicros ?? undefined,
     isPro: !!r.isPro,
   };
+}
+
+// Sync read of the caller's own profile row from the local subscription
+// cache — NO procedure RPC. Own pages (/me, /home) use this on mount so
+// navigation renders instantly; the procedure path stays for other users'
+// profiles and for post-payment polling.
+export function getProfileRowByEmail(email: string): ProfileLookupRow | null {
+  if (!dbConnection) {
+    return null;
+  }
+  try {
+    const se = sanitizeEmail(email);
+    for (const p of dbConnection.db.user_profile.iter()) {
+      if (p.email === se) {
+        return {
+          identity: { toHexString: () => p.identity.toHexString() },
+          email: p.email,
+          fullName: p.fullName,
+          city: p.city,
+          description: p.description,
+          profilePicture: p.profilePicture || '',
+          profilePictureSmall: (p as any).profilePictureSmall || '',
+          profilePictureUrl: (p as any).profilePictureUrl || '',
+          locationLat: p.locationLat ?? undefined,
+          locationLng: p.locationLng ?? undefined,
+          locationPrecision: p.locationPrecision,
+          gender: p.gender ?? undefined,
+          age: p.age ?? undefined,
+          hideFriends: !!p.hideFriends,
+          disabled: !!p.disabled,
+          createdAtMicros: p.createdAt ? BigInt(p.createdAt.microsSinceUnixEpoch) : undefined,
+          isPro: !!p.isPro,
+        };
+      }
+    }
+  } catch {
+    // cache not ready — treat as not found
+  }
+  return null;
 }
 
 export async function getProfileByEmail(email: string): Promise<ProfileLookupRow | null> {
@@ -225,6 +273,8 @@ export async function claimProfile(email: string): Promise<void> {
 
 export async function updateProfile(
   profilePicture?: string,
+  profilePictureSmall?: string,
+  profilePictureUrl?: string,
   city?: string,
   description?: string,
   hideFriends?: boolean,
@@ -234,11 +284,13 @@ export async function updateProfile(
     throw new Error('Not connected to SpaceTimeDB');
   }
 
-  console.log('Updating profile:', { profilePicture, city, description, hideFriends, gender });
+  console.log('Updating profile:', { profilePicture, profilePictureSmall, profilePictureUrl, city, description, hideFriends, gender });
   // NOTE: birthday is intentionally NOT updateable — set once at registration.
-  
+
   await dbConnection.reducers.updateProfile({
     profilePicture: profilePicture ?? undefined,
+    profilePictureSmall: profilePictureSmall ?? undefined,
+    profilePictureUrl: profilePictureUrl ?? undefined,
     city: city ?? undefined,
     description: description ?? undefined,
     hideFriends: hideFriends ?? undefined,
@@ -246,34 +298,69 @@ export async function updateProfile(
   });
 }
 
+// Self-service disable/enable: a disabled profile is excluded from searches
+// (keyword + semantic) until the owner turns it back on from Settings.
+export async function setProfileDisabled(disabled: boolean): Promise<void> {
+  if (!dbConnection) {
+    throw new Error('Not connected to SpaceTimeDB');
+  }
+  await dbConnection.reducers.setProfileDisabled({ disabled });
+}
+
+// Permanently deletes an organization (leader only) along with its members,
+// pending requests, chat messages, and org-tied stories/follows.
+export async function deleteOrganization(orgId: bigint): Promise<void> {
+  if (!dbConnection) {
+    throw new Error('Not connected to SpaceTimeDB');
+  }
+  await dbConnection.reducers.deleteOrganization({ orgId });
+}
+
 export async function initiateDiditVerification(
   email: string,
-  profilePicture: string,
+  profilePictureSmall: string,
+  profilePictureUrl: string,
   city: string,
   description: string,
   turnstileToken: string
 ): Promise<string> {
-  if (!dbConnection) {
-    throw new Error('Not connected to SpacetimeDB');
+  // Initiation now routes through the didit relay (https://auth.veri.social/didit)
+  // — the module cannot see client IPs, so the REAL per-IP throttle (+
+  // Turnstile verification) lives there. The relay calls back into
+  // SpacetimeDB as this user for the pending row. Only the 10KB thumbnail +
+  // the S3 URL travel this path — the full-size image was already uploaded
+  // to the images relay. Returns the Didit verification URL, or throws with
+  // the relay/module message.
+  const token = getOAuthSession()?.stToken;
+  if (!token) {
+    throw new Error('Not signed in');
   }
 
-  console.log('Calling initiateDiditVerification procedure');
-
-    const result = await dbConnection.procedures.initiateDiditVerification({
-    email,
-    profilePicture,
-    city,
-    description,
-    turnstileToken,
+  const resp = await fetch(`${DIDIT_RELAY_URL}/initiate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      email,
+      profile_picture_small: profilePictureSmall,
+      profile_picture_url: profilePictureUrl,
+      city,
+      description,
+      turnstile_token: turnstileToken,
+    }),
   });
 
-  console.log('initiateDiditVerification result:', result);
+  let data: any = null;
+  try {
+    data = await resp.json();
+  } catch { /* non-JSON error body */ }
 
-  if (!result.success || !result.url) {
-    throw new Error(result.error ?? 'Failed to start identity verification');
+  if (!resp.ok) {
+    throw new Error(data?.error ?? `Verification failed (${resp.status}) — please try again`);
   }
-
-  return result.url;
+  if (!data?.success || !data.url) {
+    throw new Error(data?.error ?? 'Failed to start identity verification');
+  }
+  return data.url;
 }
 
 // Fetch the caller's pending-registration state. If they already have an
@@ -287,6 +374,8 @@ export async function getPendingRegistration(): Promise<{
   city: string | null;
   description: string | null;
   profilePicture: string | null;
+  profilePictureSmall: string | null;
+  profilePictureUrl: string | null;
 } | null> {
   if (!dbConnection) {
     throw new Error('Not connected to SpacetimeDB');
@@ -305,6 +394,8 @@ export async function getPendingRegistration(): Promise<{
     city: result.city ?? null,
     description: result.description ?? null,
     profilePicture: result.profilePicture ?? null,
+    profilePictureSmall: result.profilePictureSmall ?? null,
+    profilePictureUrl: result.profilePictureUrl ?? null,
   };
 }
 
@@ -334,7 +425,8 @@ export async function checkDiditVerification(sessionId: string): Promise<{ fullN
 
 export async function createVerifiedProfile(
   sessionId: string,
-  profilePicture: string,
+  profilePictureSmall: string,
+  profilePictureUrl: string,
   city: string,
   description: string,
   fullName: string,
@@ -349,7 +441,9 @@ export async function createVerifiedProfile(
 
   const result = await dbConnection.procedures.createVerifiedProfile({
     sessionId,
-    profilePicture,
+    profilePicture: '',
+    profilePictureSmall,
+    profilePictureUrl,
     city,
     description,
     fullName,
@@ -402,15 +496,26 @@ export function orgAccountIdentityHex(orgId: bigint): string {
   return '4f' + orgId.toString(16).padStart(62, '0');
 }
 
-// identity hex -> { name, picture } for BOTH individual profiles and org accounts
-export function buildAccountCache(): Map<string, { name: string; picture: string }> {
-  const cache = new Map<string, { name: string; picture: string }>();
+// identity hex -> { name, picture } for BOTH individual profiles and org
+// accounts. Bandwidth design: picture = the 10KB THUMBNAIL (everything that
+// renders at avatar size); fullPicture = the S3 URL (or legacy base64) used
+// ONLY by swipe backgrounds and the profile-pic zoom.
+export function buildAccountCache(): Map<string, { name: string; picture: string; fullPicture?: string }> {
+  const cache = new Map<string, { name: string; picture: string; fullPicture?: string }>();
   if (!dbConnection) return cache;
   for (const profile of dbConnection.db.user_profile.iter()) {
-    cache.set(profile.identity.toHexString(), { name: profile.fullName, picture: profile.profilePicture || '' });
+    cache.set(profile.identity.toHexString(), {
+      name: profile.fullName,
+      picture: (profile as any).profilePictureSmall || profile.profilePicture || '',
+      fullPicture: (profile as any).profilePictureUrl || profile.profilePicture || '',
+    });
   }
   for (const org of dbConnection.db.organization.iter()) {
-    cache.set(orgAccountIdentityHex(org.id), { name: org.name, picture: org.picture || '' });
+    cache.set(orgAccountIdentityHex(org.id), {
+      name: org.name,
+      picture: (org as any).pictureSmall || org.picture || '',
+      fullPicture: (org as any).pictureUrl || org.picture || '',
+    });
   }
   return cache;
 }
@@ -460,6 +565,20 @@ export async function createStoryPost(
     mediaTypes: mediaTypes ? JSON.stringify(mediaTypes) : undefined,
     actingAsOrgId: actingAsOrgId ?? undefined,
   });
+}
+
+// Local pre-check for the daily post budget (mirrors the backend gate so the
+// user gets a friendly message instead of a 530). Counts the caller's story
+// posts created since the start of the UTC day.
+export function getTodayStoryPostCount(posterHex: string): number {
+  const DAY_MICROS = 86_400_000_000;
+  const todayStart = Math.floor((Date.now() * 1000) / DAY_MICROS) * DAY_MICROS;
+  let n = 0;
+  if (!dbConnection) return n;
+  for (const s of dbConnection.db.story_post.iter()) {
+    if (s.posterIdentity.toHexString() === posterHex && Number(s.createdAt) >= todayStart) n++;
+  }
+  return n;
 }
 
 export async function getStoriesForProfile(profileOwnerIdentity: string) {
@@ -679,7 +798,7 @@ export function getOrgFeedStories(orgIdentity: string, orderOldToNew: boolean = 
     const accounts = buildAccountCache();
     const orgCache = new Map<bigint, { name: string; picture: string }>();
     for (const o of dbConnection.db.organization.iter()) {
-      orgCache.set(o.id, { name: o.name, picture: o.picture || '' });
+      orgCache.set(o.id, { name: o.name, picture: (o as any).pictureSmall || o.picture || '' });
     }
     const stories: FeedStory[] = [];
     for (const post of dbConnection.db.story_post.iter()) {
@@ -851,23 +970,33 @@ export async function getFollowedStories(currentIdentityHex: string) {
 
 // ─── Organization APIs ───────────────────────────────────────────
 
+// Location is mandatory for org creation: caller passes the geolocation fix
+// (jittered client-side when approx) + the city derived from it + precision.
 export async function createOrganization(
-  name: string, picture: string, city: string, description: string, locationLat?: number, locationLng?: number
+  name: string, picture: string, city: string, description: string,
+  locationLat: number, locationLng: number, locationPrecision: 'exact' | 'approx' = 'exact',
+  pictureSmall?: string, pictureUrl?: string,
 ): Promise<void> {
   if (!dbConnection) throw new Error('Not connected');
   await dbConnection.reducers.createOrganization({
     name, picture, city, description,
-    locationLat: locationLat ?? undefined,
-    locationLng: locationLng ?? undefined,
+    locationLat,
+    locationLng,
+    locationPrecision,
+    pictureSmall: pictureSmall ?? undefined,
+    pictureUrl: pictureUrl ?? undefined,
   });
 }
 
 export async function updateOrganization(
-  orgId: bigint, picture?: string, city?: string, description?: string, locationLat?: number, locationLng?: number, hideMembers?: boolean, gender?: string
+  orgId: bigint, picture?: string, pictureSmall?: string, pictureUrl?: string,
+  city?: string, description?: string, locationLat?: number, locationLng?: number,
+  hideMembers?: boolean, gender?: string
 ): Promise<void> {
   if (!dbConnection) throw new Error('Not connected');
   await dbConnection.reducers.updateOrganization({
-    orgId, picture, city, description,
+    orgId, picture: picture ?? undefined, pictureSmall: pictureSmall ?? undefined,
+    pictureUrl: pictureUrl ?? undefined, city: city ?? undefined, description: description ?? undefined,
     locationLat: locationLat ?? undefined,
     locationLng: locationLng ?? undefined,
     hideMembers: hideMembers ?? undefined,
@@ -882,15 +1011,47 @@ export function getMyOrganizations(identity: string) {
   for (const org of dbConnection.db.organization.iter()) {
     orgCache.set(org.id, org);
   }
+  // organization_member is ROLES ONLY (leader/co-leader) — membership is a
+  // friendship row with the org's account identity. Role rows still imply
+  // membership (a leader/co-leader is by definition a member).
+  const seen = new Set<string>();
+  for (const f of dbConnection.db.friendship.iter()) {
+    const a = f.userA.toHexString();
+    const b = f.userB.toHexString();
+    const other = a === identity ? b : b === identity ? a : null;
+    if (!other) continue;
+    if (!(other.length === 64 && other.startsWith('4f'))) continue;
+    const orgId = BigInt('0x' + other.slice(2));
+    const org = orgCache.get(orgId);
+    if (!org || seen.has(other)) continue;
+    seen.add(other);
+    orgs.push({ ...org, picture: (org as any).pictureSmall || org.picture || '', role: getOrgRole(orgId, identity) });
+  }
+  // Role rows: orgs where I'm leader/co-leader but not (yet) a friend (should
+  // not normally happen — role rows are created through membership).
   for (const m of dbConnection.db.organization_member.iter()) {
     if (m.memberIdentity.toHexString() === identity) {
       const org = orgCache.get(m.orgId);
-      if (org) {
-        orgs.push({ ...org, role: m.role });
+      const orgHex = orgAccountIdentityHex(m.orgId);
+      if (org && !seen.has(orgHex)) {
+        seen.add(orgHex);
+        orgs.push({ ...org, picture: (org as any).pictureSmall || org.picture || '', role: m.role });
       }
     }
   }
   return orgs;
+}
+
+// Roles live in organization_member (leader/co-leader); a plain member has no
+// row there, so the default role is 'member'.
+function getOrgRole(orgId: bigint, identity: string): string {
+  if (!dbConnection) return 'member';
+  for (const m of dbConnection.db.organization_member.iter()) {
+    if (m.orgId === orgId && m.memberIdentity.toHexString() === identity) {
+      if (m.role === 'leader' || m.role === 'co_leader') return m.role;
+    }
+  }
+  return 'member';
 }
 
 export function getOrganizationById(orgId: bigint) {
@@ -909,15 +1070,43 @@ export function getOrganizationMembers(orgId: bigint) {
   for (const p of dbConnection.db.user_profile.iter()) {
     cities.set(p.identity.toHexString(), p.city || '');
   }
+  // Members ARE friends of the org's account identity: iterate FRIENDSHIP,
+  // not organization_member (that table is ROLES ONLY). Role overlay for
+  // leader/co-leader comes from organization_member rows.
+  const orgHex = orgAccountIdentityHex(orgId);
+  const seen = new Set<string>();
+  for (const f of dbConnection.db.friendship.iter()) {
+    const a = f.userA.toHexString();
+    const b = f.userB.toHexString();
+    const other = a === orgHex ? b : b === orgHex ? a : null;
+    if (!other) continue;
+    if (seen.has(other)) continue;
+    seen.add(other);
+    const profile = profileCache.get(other);
+    members.push({
+      identity: other,
+      role: getOrgRole(orgId, other),
+      fullName: profile?.name || 'Unknown',
+      picture: profile?.picture || '',
+      city: cities.get(other) || '',
+      joinedAt: f.createdAt?.toDate() ?? new Date(),
+    });
+  }
+  // Role rows imply membership — include any leader/co-leader not already in
+  // the friendship list (legacy orgs created before membership became
+  // friendship may only have the role row).
   for (const m of dbConnection.db.organization_member.iter()) {
-    if (m.orgId === orgId) {
-      const profile = profileCache.get(m.memberIdentity.toHexString());
+    if (m.orgId === orgId && (m.role === 'leader' || m.role === 'co_leader')) {
+      const hex = m.memberIdentity.toHexString();
+      if (seen.has(hex)) continue;
+      seen.add(hex);
+      const profile = profileCache.get(hex);
       members.push({
-        identity: m.memberIdentity.toHexString(),
+        identity: hex,
         role: m.role,
         fullName: profile?.name || 'Unknown',
         picture: profile?.picture || '',
-        city: cities.get(m.memberIdentity.toHexString()) || '',
+        city: cities.get(hex) || '',
         joinedAt: m.joinedAt?.toDate() ?? new Date(),
       });
     }
@@ -1055,6 +1244,14 @@ export async function sendOrgMemberRequest(orgId: bigint, actingAsOrgId?: bigint
     actingAsOrgId: actingAsOrgId ?? undefined,
     actingAsOrgIdentity: actingAsOrgId !== undefined ? Identity.fromString(orgAccountIdentityHex(actingAsOrgId)) : undefined,
   });
+}
+
+// Leave an organization = UNFRIEND the org's account identity (membership ≡
+// friendship; the unfriend reducer drops the member row + pending request
+// when the target is an org identity). Follows of the org are unaffected.
+export async function leaveOrg(orgId: bigint): Promise<void> {
+  if (!dbConnection) throw new Error('Not connected');
+  await unfriend(orgAccountIdentityHex(orgId));
 }
 
 // ─── Messaging APIs ───────────────────────────────────────────────
@@ -1257,5 +1454,144 @@ export function isPro(identity: string): boolean {
   if (!dbConnection) return false;
   const p = dbConnection.db.user_profile.identity.find(Identity.fromString(identity));
   return p?.isPro ?? false;
+}
+
+// One-time org claim fee rows for the current caller (my_org_claim_fee view).
+export function getMyOrgClaimFee(): any[] {
+  if (!dbConnection) return [];
+  try {
+    const rows: any[] = [];
+    for (const r of (dbConnection as any).db.myOrgClaimFee.iter()) rows.push(r);
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+// ─── Gallery (S3-backed photos) ───────────────────────────────────
+
+export interface GalleryPhoto {
+  id: bigint;
+  ownerIdentity: string;
+  s3Key: string;
+  url: string;
+  bytes: number;
+  createdAt: Date;
+}
+
+// All gallery photos for an identity, oldest first.
+export function getGallery(ownerIdentity: string): GalleryPhoto[] {
+  if (!dbConnection) return [];
+  const photos: GalleryPhoto[] = [];
+  for (const g of dbConnection.db.gallery_photo.iter()) {
+    if (g.ownerIdentity.toHexString() === ownerIdentity) {
+      photos.push({
+        id: g.id,
+        ownerIdentity: g.ownerIdentity.toHexString(),
+        s3Key: g.s3Key,
+        url: g.url,
+        bytes: Number(g.bytes),
+        createdAt: g.createdAt.toDate(),
+      });
+    }
+  }
+  return photos.sort((a, b) => (a.createdAt.getTime() - b.createdAt.getTime()));
+}
+
+// Upload a compressed WebP blob to the images relay. The relay stores it in
+// S3 AND records the gallery row in SpacetimeDB using the caller's identity
+// token (the upload itself is the auth). Returns the relay's {key, url}.
+export async function uploadGalleryPhoto(
+  blob: Blob,
+  actingAsOrgId?: bigint,
+  actingAsOrgIdentityHex?: string,
+): Promise<{ key: string; url: string; bytes: number }> {
+  const token = getOAuthSession()?.stToken;
+  if (!token) throw new Error('Not signed in');
+  const headers: Record<string, string> = {
+    'Content-Type': blob.type || 'image/webp',
+    Authorization: `Bearer ${token}`,
+  };
+  if (actingAsOrgId !== undefined && actingAsOrgIdentityHex) {
+    headers['X-Acting-Org-Id'] = actingAsOrgId.toString();
+    headers['X-Acting-Org-Identity'] = actingAsOrgIdentityHex;
+  }
+  const resp = await fetch(`${IMAGES_RELAY_URL}/upload`, {
+    method: 'POST',
+    headers,
+    body: blob,
+  });
+  const text = await resp.text();
+  let data: any = null;
+  try { data = JSON.parse(text); } catch { /* non-JSON */ }
+  if (!resp.ok) {
+    throw new Error(data?.error || `Upload failed (${resp.status})`);
+  }
+  return { key: data.key, url: data.url, bytes: data.bytes };
+}
+
+// Upload the full-size (≤0.5MB) profile picture to S3 via the images relay.
+// Returns the immutable URL; the DB only ever stores this URL + the 10KB
+// thumbnail (bandwidth design — the full image is fetched on demand for
+// swipe backgrounds and profile-pic zoom only).
+export async function uploadProfilePicture(
+  blob: Blob,
+  actingAsOrgId?: bigint,
+  actingAsOrgIdentityHex?: string,
+): Promise<{ url: string }> {
+  const token = getOAuthSession()?.stToken;
+  if (!token) throw new Error('Not signed in');
+  const headers: Record<string, string> = {
+    'Content-Type': blob.type || 'image/webp',
+    Authorization: `Bearer ${token}`,
+  };
+  if (actingAsOrgId !== undefined && actingAsOrgIdentityHex) {
+    headers['X-Acting-Org-Id'] = actingAsOrgId.toString();
+    headers['X-Acting-Org-Identity'] = actingAsOrgIdentityHex;
+  }
+  const resp = await fetch(`${IMAGES_RELAY_URL}/profile-upload`, {
+    method: 'POST',
+    headers,
+    body: blob,
+  });
+  const text = await resp.text();
+  let data: any = null;
+  try { data = JSON.parse(text); } catch { /* non-JSON */ }
+  if (!resp.ok) {
+    throw new Error(data?.error || `Picture upload failed (${resp.status})`);
+  }
+  if (!data?.url) {
+    throw new Error('Picture upload failed — no URL returned');
+  }
+  return { url: data.url };
+}
+
+// Delete a gallery photo: S3 object first (the relay gates ownership
+// row-based via the module — can_delete_gallery_photo), then the row.
+// The row reducer is idempotent, so a retried flow stays safe.
+export async function deleteGalleryPhoto(
+  photo: GalleryPhoto,
+  actingAsOrgId?: bigint,
+  actingAsOrgIdentityHex?: string,
+): Promise<void> {
+  if (!dbConnection) throw new Error('Not connected');
+  const token = getOAuthSession()?.stToken;
+  if (!token) throw new Error('Not authenticated');
+  const res = await fetch(`${IMAGES_RELAY_URL}/img/${photo.s3Key}`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      ...(actingAsOrgIdentityHex ? { 'X-Acting-Org-Identity': actingAsOrgIdentityHex } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text?.includes('Not your photo') ? 'You can only delete your own gallery photos' : `Could not delete photo (${res.status})`);
+  }
+  await dbConnection.reducers.deleteGalleryPhoto({
+    photoId: photo.id,
+    actingAsOrgId: actingAsOrgId ?? undefined,
+    actingAsOrgIdentity: actingAsOrgIdentityHex ? Identity.fromString(actingAsOrgIdentityHex) : undefined,
+  });
 }
 

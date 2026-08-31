@@ -4,15 +4,17 @@ import { Turnstile } from '@marsidev/react-turnstile';
 import { CHAR_LIMITS, MAX_MEDIA_SIZE_BYTES, ALLOWED_MEDIA_TYPES, TURNSTILE_SITE_KEY } from '../config';
 import { useApp } from '../App';
 import { fileToBase64, isFileSizeValid, isFileTypeValid, validateAndSanitizeCity, validateAndSanitizeDescription } from '../utils/sanitize';
+import { compressProfileImage, compressProfileThumb } from '../utils/imageCompress';
 import { isDisplayNameAcceptable } from '../utils/nameMatcher';
-import { initiateDiditVerification, checkDiditVerification, createVerifiedProfile, updateLocation, getPendingRegistration } from '../utils/spacetime';
+import { initiateDiditVerification, checkDiditVerification, createVerifiedProfile, updateLocation, getPendingRegistration, uploadProfilePicture } from '../utils/spacetime';
 import { getBrowserLocation, jitterLocation, reverseGeocodeResilient } from '../utils/geo';
 import { getOAuthSession } from '../utils/oauthSession';
 
 const PENDING_REGISTRATION_KEY = 'pending_registration';
 
 interface PendingRegistration {
-  profilePicture: string;
+  profilePicture: string; // 10KB thumbnail (the full image lives in S3)
+  profilePictureUrl: string;
   displayName: string;
   city: string;
   description: string;
@@ -34,6 +36,7 @@ function RegisterPage() {
   const [description, setDescription] = useState('');
   const [picturePreview, setPicturePreview] = useState<string | null>(null);
   const [storedPictureBase64, setStoredPictureBase64] = useState<string | null>(null);
+  const [storedPictureUrl, setStoredPictureUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [diditVerified, setDiditVerified] = useState(false);
@@ -60,6 +63,7 @@ function RegisterPage() {
         if (parsed.profilePicture) {
           setPicturePreview(parsed.profilePicture);
           setStoredPictureBase64(parsed.profilePicture);
+          if (parsed.profilePictureUrl) setStoredPictureUrl(parsed.profilePictureUrl);
         }
       } catch (e) {
         console.error('Failed to restore pending registration:', e);
@@ -71,8 +75,9 @@ function RegisterPage() {
     if (oauthSession) {
       if (oauthSession.name) setFullName(oauthSession.name);
       if (oauthSession.picture && !storedPictureBase64) {
+        // Provider avatar is only a PREFILL — the required-picture gate forces
+        // a real upload (compressed to WebP), so do not treat it as stored.
         setPicturePreview(oauthSession.picture);
-        setStoredPictureBase64(oauthSession.picture);
       }
     }
 
@@ -86,9 +91,10 @@ function RegisterPage() {
           setFullName(pending.legalName);
           if (pending.city) setCity(pending.city);
           if (pending.description) setDescription(pending.description);
-          if (pending.profilePicture && !storedPictureBase64) {
-            setPicturePreview(pending.profilePicture);
-            setStoredPictureBase64(pending.profilePicture);
+          if (pending.profilePictureSmall && !storedPictureBase64) {
+            setPicturePreview(pending.profilePictureSmall);
+            setStoredPictureBase64(pending.profilePictureSmall);
+            if (pending.profilePictureUrl) setStoredPictureUrl(pending.profilePictureUrl);
           }
           setDiditVerified(true);
           console.log('Resuming signup: identity verification already approved');
@@ -138,14 +144,25 @@ function RegisterPage() {
         setError('File is too large. Maximum size is 5MB.');
         return;
       }
+      // Compress BOTH copies client-side (bandwidth design): the full-size WebP
+      // < 0.5MB goes to S3 via the images relay (only its URL is stored); the
+      // 10KB thumbnail ships to every client and is the picture everywhere.
+      const [fullBlob, thumbBlob] = await Promise.all([
+        compressProfileImage(file),
+        compressProfileThumb(file),
+      ]);
+      const { url } = await uploadProfilePicture(fullBlob);
+      const thumbBase64 = await fileToBase64(thumbBlob);
+      setStoredPictureBase64(thumbBase64);
+      setStoredPictureUrl(url);
+
+      // Preview from the thumbnail — matches what actually stores/renders.
       const reader = new FileReader();
       reader.onloadend = () => {
         setPicturePreview(reader.result as string);
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(thumbBlob);
 
-      const base64 = await fileToBase64(file);
-      setStoredPictureBase64(base64);
       setError(null);
     }
   };
@@ -153,6 +170,7 @@ function RegisterPage() {
   const savePendingRegistration = () => {
     const pending: PendingRegistration = {
       profilePicture: storedPictureBase64 || '',
+      profilePictureUrl: storedPictureUrl || '',
       displayName,
       city,
       description,
@@ -189,6 +207,7 @@ function RegisterPage() {
       const url = await initiateDiditVerification(
         email,
         storedPictureBase64,
+        storedPictureUrl || '',
         sanitizedCity,
         sanitizedDescription,
         turnstileToken
@@ -232,7 +251,8 @@ function RegisterPage() {
 
       await createVerifiedProfile(
         sessionId,
-        storedPictureBase64,
+        storedPictureBase64 || '',
+        storedPictureUrl || '',
         sanitizedCity,
         sanitizedDescription,
         displayName,
