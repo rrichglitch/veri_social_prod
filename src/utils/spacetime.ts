@@ -123,11 +123,12 @@ async function subscribeToTables(): Promise<void> {
           tables.user_profile,
           tables.following,
           tables.story_post,
+          tables.story_media,
           tables.my_feed,
           tables.friend_request,
           tables.friendship,
-          tables.notification,
-          tables.message,
+          'SELECT * FROM my_notifications',
+          'SELECT * FROM my_messages',
           tables.organization,
           tables.organization_member,
           tables.gallery_photo,
@@ -264,11 +265,6 @@ export async function getProfileByEmail(email: string): Promise<ProfileLookupRow
     console.error('Error getting profile:', e);
     return null;
   }
-}
-
-export async function claimProfile(email: string): Promise<void> {
-  if (!dbConnection) throw new Error('Not connected');
-  await dbConnection.reducers.claimProfile({ email });
 }
 
 export async function updateProfile(
@@ -551,7 +547,11 @@ export async function createStoryPost(
   content: string,
   mediaData?: string,
   mediaTypes?: string[],
-  actingAsOrgId?: bigint
+  actingAsOrgId?: bigint,
+  mediaKey?: string,
+  mediaUrl?: string,
+  mediaBytes?: bigint,
+  mediaType?: string
 ): Promise<void> {
   if (!dbConnection) {
     throw new Error('Not connected to SpaceTimeDB');
@@ -564,6 +564,10 @@ export async function createStoryPost(
     mediaData,
     mediaTypes: mediaTypes ? JSON.stringify(mediaTypes) : undefined,
     actingAsOrgId: actingAsOrgId ?? undefined,
+    mediaKey,
+    mediaUrl,
+    mediaBytes,
+    mediaType,
   });
 }
 
@@ -597,16 +601,19 @@ export async function getStoriesForProfile(profileOwnerIdentity: string) {
     }
     
     const profileCache = buildAccountCache();
-    
+    const mediaByPost = buildStoryMediaMap();
+
     for (const post of dbConnection.db.story_post.iter()) {
       if (post.profileOwnerIdentity.toHexString() === profileOwnerIdentity) {
         const posterHex = post.posterIdentity.toHexString();
         const poster = profileCache.get(posterHex);
+        const sm = mediaByPost.get(storyMediaKey(post.posterIdentity, post.createdAt));
         stories.push({
           id: post.id,
           content: post.content,
           mediaData: post.mediaData,
           mediaTypes: post.mediaTypes,
+          mediaUrl: sm?.mediaUrl || '',
           createdAt: post.createdAt.toDate(),
           posterIdentity: posterHex,
           posterName: poster?.name || 'Unknown',
@@ -625,6 +632,48 @@ export async function getStoriesForProfile(profileOwnerIdentity: string) {
   }
 }
 
+// story_media links are keyed by (poster_identity, created_at) — same pair
+// that story_post rows carry. Builds a lookup map for the current cache.
+function storyMediaKey(posterIdentity: any, createdAt: any): string {
+  return `${posterIdentity.toHexString()}:${(createdAt as any)?.microsSinceUnixEpoch?.toString?.() || String(createdAt)}`;
+}
+function buildStoryMediaMap(): Map<string, any> {
+  const map = new Map<string, any>();
+  if (!dbConnection) return map;
+  for (const m of dbConnection.db.story_media.iter()) {
+    map.set(storyMediaKey(m.posterIdentity, m.createdAt), m);
+  }
+  return map;
+}
+
+// Uploads story media through the images relay (gallery rules: 500KB cap,
+// WebP/JPEG sniff, S3 storage) and returns the key + public URL.
+export async function uploadStoryMedia(file: Blob): Promise<{ s3Key: string; url: string; bytes: number } | null> {
+  const session = getOAuthSession();
+  const token = session?.stToken;
+  if (!token) {
+    console.error('Not authenticated for story upload');
+    return null;
+  }
+  try {
+    const res = await fetch(`${IMAGES_RELAY_URL}/story-upload`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token },
+      body: file,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.error('Story upload failed:', res.status, text);
+      return null;
+    }
+    const data = await res.json();
+    return { s3Key: data.s3_key, url: data.url, bytes: data.bytes };
+  } catch (e) {
+    console.error('Story upload error:', e);
+    return null;
+  }
+}
+
 export async function getMyStoryPosts(currentIdentityHex: string) {
   if (!dbConnection) {
     return [];
@@ -634,16 +683,19 @@ export async function getMyStoryPosts(currentIdentityHex: string) {
     const stories: any[] = [];
     
     const profileCache = buildAccountCache();
+    const mediaByPost = buildStoryMediaMap();
     
     for (const post of dbConnection.db.story_post.iter()) {
       if (post.profileOwnerIdentity.toHexString() === currentIdentityHex) {
         const posterHex = post.posterIdentity.toHexString();
         const poster = profileCache.get(posterHex);
+        const sm = mediaByPost.get(storyMediaKey(post.posterIdentity, post.createdAt));
         stories.push({
           id: post.id,
           content: post.content,
           mediaData: post.mediaData,
           mediaTypes: post.mediaTypes,
+          mediaUrl: sm?.mediaUrl || '',
           createdAt: post.createdAt.toDate(),
           posterIdentity: posterHex,
           posterName: poster?.name || 'Unknown',
@@ -1274,7 +1326,7 @@ export async function sendOrgMessage(orgId: bigint, content: string, actingAsOrg
 export function getDirectMessages(userA: string, userB: string) {
   if (!dbConnection) return [];
   const msgs: any[] = [];
-  for (const m of dbConnection.db.message.iter()) {
+  for (const m of dbConnection.db.my_messages.iter()) {
     const sender = m.senderIdentity.toHexString();
     const recipient = m.recipientIdentity?.toHexString() || '';
     if ((sender === userA && recipient === userB) || (sender === userB && recipient === userA)) {
@@ -1293,7 +1345,7 @@ export function getOrgMessages(orgId: bigint) {
   if (!dbConnection) return [];
   const msgs: any[] = [];
   const profileCache = buildAccountCache();
-  for (const m of dbConnection.db.message.iter()) {
+  for (const m of dbConnection.db.my_messages.iter()) {
     if (m.orgId === orgId) {
       const senderHex = m.senderIdentity.toHexString();
       const profile = profileCache.get(senderHex);
@@ -1346,7 +1398,7 @@ export function getFriendChats(identity: string) {
   const profileCache = buildAccountCache();
   // Find latest message for each friend
   const latestMsg = new Map<string, number>();
-  for (const m of dbConnection.db.message.iter()) {
+  for (const m of dbConnection.db.my_messages.iter()) {
     const s = m.senderIdentity.toHexString();
     const r = m.recipientIdentity?.toHexString();
     if (!r) continue;
@@ -1378,7 +1430,7 @@ export function getNotifications(identity: string) {
   if (!dbConnection) return [];
   const notifs: any[] = [];
   const profileCache = buildAccountCache();
-  for (const n of dbConnection.db.notification.iter()) {
+  for (const n of dbConnection.db.my_notifications.iter()) {
     if (n.recipientIdentity.toHexString() === identity) {
       const fromHex = n.fromIdentity?.toHexString();
       const fromProfile = fromHex ? profileCache.get(fromHex) : null;
@@ -1402,7 +1454,7 @@ export function getNotifications(identity: string) {
 export function getUnreadNotificationCount(identity: string): number {
   if (!dbConnection) return 0;
   let count = 0;
-  for (const n of dbConnection.db.notification.iter()) {
+  for (const n of dbConnection.db.my_notifications.iter()) {
     if (n.recipientIdentity.toHexString() === identity && !n.resolved) {
       count++;
     }
@@ -1436,13 +1488,6 @@ export async function jitterOrgToApprox(orgId: bigint): Promise<void> {
 export async function resolveNotification(notificationId: bigint): Promise<void> {
   if (!dbConnection) throw new Error('Not connected');
   await dbConnection.reducers.resolveNotification({ notificationId });
-}
-
-// ─── Pro Upgrade ──────────────────────────────────────────────────
-
-export async function upgradeToPro(): Promise<void> {
-  if (!dbConnection) throw new Error('Not connected');
-  await dbConnection.reducers.upgradeToPro({});
 }
 
 export async function cancelProSubscription(): Promise<void> {

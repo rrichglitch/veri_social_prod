@@ -10,6 +10,11 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const CanDeleteGalleryPhotoResult = __t.object("CanDeleteGalleryPhotoResult", {
+  allowed: __t.bool(),
+});
+export type CanDeleteGalleryPhotoResult = __Infer<typeof CanDeleteGalleryPhotoResult>;
+
 export const CheckDiditResult = __t.object("CheckDiditResult", {
   success: __t.bool(),
   fullName: __t.option(__t.string()),
@@ -130,6 +135,35 @@ export type MonthlyVerificationCap = __Infer<typeof MonthlyVerificationCap>;
 
 export const MyFeed = __t.object("MyFeed", {});
 export type MyFeed = __Infer<typeof MyFeed>;
+
+export const MyMessage = __t.object("MyMessage", {
+  id: __t.u64(),
+  senderIdentity: __t.identity(),
+  recipientIdentity: __t.option(__t.identity()),
+  orgId: __t.option(__t.u64()),
+  content: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type MyMessage = __Infer<typeof MyMessage>;
+
+export const MyMessages = __t.object("MyMessages", {});
+export type MyMessages = __Infer<typeof MyMessages>;
+
+export const MyNotification = __t.object("MyNotification", {
+  id: __t.u64(),
+  recipientIdentity: __t.identity(),
+  type: __t.string(),
+  fromIdentity: __t.option(__t.identity()),
+  orgId: __t.option(__t.u64()),
+  message: __t.string(),
+  createdAt: __t.timestamp(),
+  resolved: __t.bool(),
+  referenceId: __t.option(__t.u64()),
+});
+export type MyNotification = __Infer<typeof MyNotification>;
+
+export const MyNotifications = __t.object("MyNotifications", {});
+export type MyNotifications = __Infer<typeof MyNotifications>;
 
 export const MyOrgClaimFee = __t.object("MyOrgClaimFee", {});
 export type MyOrgClaimFee = __Infer<typeof MyOrgClaimFee>;
@@ -408,6 +442,16 @@ export const SearchResultItem = __t.object("SearchResultItem", {
   locationLng: __t.option(__t.f64()),
 });
 export type SearchResultItem = __Infer<typeof SearchResultItem>;
+
+export const StoryMedia = __t.object("StoryMedia", {
+  posterIdentity: __t.identity(),
+  createdAt: __t.timestamp(),
+  mediaKey: __t.string(),
+  mediaUrl: __t.string(),
+  mediaBytes: __t.u64(),
+  mediaType: __t.string(),
+});
+export type StoryMedia = __Infer<typeof StoryMedia>;
 
 export const StoryPost = __t.object("StoryPost", {
   id: __t.u64(),

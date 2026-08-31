@@ -2,6 +2,7 @@
 // The relay lives on the VPS (auth.veri.social/payments); it never exposes
 // Stripe secret keys to the browser.
 import { PAYMENTS_RELAY_URL } from '../config';
+import { getOAuthSession } from './oauthSession';
 
 export async function requestCheckout(
   kind: 'pro' | 'org',
@@ -22,10 +23,19 @@ export async function requestCheckout(
 
 // Cancel the Pro subscription at the end of the current billing period
 // (Stripe-side). The user keeps Pro until period end — webhook flips it off.
+// Requires the caller's own STDB bearer: the relay verifies the token via
+// whoami and only cancels the identity that owns the subscription (8/31).
 export async function cancelSubscriptionViaStripe(identity: string): Promise<void> {
+  const session = getOAuthSession();
+  if (!session?.stToken) {
+    throw new Error('Not authenticated');
+  }
   const resp = await fetch(`${PAYMENTS_RELAY_URL}/api/cancel`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + session.stToken,
+    },
     body: JSON.stringify({ identity }),
   });
   if (!resp.ok) {

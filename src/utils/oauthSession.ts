@@ -9,7 +9,7 @@ export interface OAuthSession {
   email: string;
   name: string;
   picture: string;
-  oauthToken: string; // short-lived provider access token, consumed by oauthClaimProfile
+  oauthToken?: string; // NEVER persisted — provider access token is in-memory only (8/31)
   identityHex: string;
 }
 
@@ -21,6 +21,8 @@ export function getOAuthSession(): OAuthSession | null {
     if (!raw) return null;
     const s = JSON.parse(raw) as OAuthSession;
     if (!s.stToken || !s.provider || !s.email) return null;
+    // Defense in depth: never hand a persisted provider token back.
+    delete s.oauthToken;
     return s;
   } catch {
     return null;
@@ -28,9 +30,24 @@ export function getOAuthSession(): OAuthSession | null {
 }
 
 export function setOAuthSession(session: OAuthSession) {
-  localStorage.setItem(KEY, JSON.stringify(session));
+  // The provider access token is a live credential — it must never touch
+  // localStorage (XSS/extension/device-leak surface). It lives only in the
+  // callback flow's memory for the oauthClaimProfile call.
+  const { oauthToken: _omit, ...persisted } = session;
+  localStorage.setItem(KEY, JSON.stringify(persisted));
 }
 
+// Full logout: clears the oauth session AND every other veri_* key
+// (org-acting context, pending-registration PII) so shared devices don't
+// leak the previous user's state (8/31 security round).
 export function clearOAuthSession() {
   localStorage.removeItem(KEY);
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('veri_')) localStorage.removeItem(k);
+    }
+  } catch {
+    /* storage unavailable — best effort */
+  }
 }

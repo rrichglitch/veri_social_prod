@@ -11,10 +11,13 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  id: __t.u64().primaryKey(),
-  senderIdentity: __t.identity().name("sender_identity"),
-  recipientIdentity: __t.option(__t.identity()).name("recipient_identity"),
+  id: __t.u64(),
+  recipientIdentity: __t.identity().name("recipient_identity"),
+  type: __t.string(),
+  fromIdentity: __t.option(__t.identity()).name("from_identity"),
   orgId: __t.option(__t.u64()).name("org_id"),
-  content: __t.string(),
+  message: __t.string(),
   createdAt: __t.timestamp().name("created_at"),
+  resolved: __t.bool(),
+  referenceId: __t.option(__t.u64()).name("reference_id"),
 });

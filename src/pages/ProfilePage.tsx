@@ -9,15 +9,17 @@ import Gallery from '../components/Gallery';
 import { useOrg } from '../contexts/OrgContext';
 import TopBar from '../components/TopBar';
 import AuthActions from '../components/AuthActions';
-import { getProfileByIdentity, checkIsFollowing, createStoryPost, getTodayStoryPostCount, getStoriesForProfile, connectToSpacetimeDB, getProfileByEmail, getOrganizationById, orgAccountIdentityHex, checkIsFriend, getOrgMemberRequestStatus, sendOrgMemberRequest, leaveOrg } from '../utils/spacetime';
+import { getProfileByIdentity, checkIsFollowing, createStoryPost, getTodayStoryPostCount, getStoriesForProfile, connectToSpacetimeDB, getProfileByEmail, getOrganizationById, orgAccountIdentityHex, checkIsFriend, getOrgMemberRequestStatus, sendOrgMemberRequest, leaveOrg, uploadStoryMedia } from '../utils/spacetime';
+import { compressGalleryImage } from '../utils/imageCompress';
 import { CHAR_LIMITS, MAX_MEDIA_SIZE_BYTES, ALLOWED_MEDIA_TYPES, DAILY_POST_LIMIT } from '../config';
-import { fileToBase64, isFileSizeValid, isFileTypeValid } from '../utils/sanitize';
+import { isFileSizeValid, isFileTypeValid } from '../utils/sanitize';
 
 interface StoryPost {
   id: bigint;
   content: string;
   mediaData: string;
   mediaTypes: string;
+  mediaUrl?: string; // S3-backed media (8/31)
   createdAt: Date;
   posterIdentity: string;
   posterName: string;
@@ -216,10 +218,26 @@ function ProfilePage() {
     try {
       let mediaData: string | undefined;
       let mediaTypes: string[] | undefined;
+      let mediaKey: string | undefined;
+      let mediaUrl: string | undefined;
+      let mediaBytes: bigint | undefined;
+      let mediaType: string | undefined;
 
       if (storyMedia) {
-        mediaData = await fileToBase64(storyMedia);
-        mediaTypes = [storyMedia.type];
+        // Story media follows the gallery pipeline (8/31): compress to WebP
+        // ≤ ~460KB client-side, upload to the relay (500KB cap + sniff +
+        // per-user rate limit), store in S3, and link via story_media.
+        const compressed = await compressGalleryImage(storyMedia);
+        const upload = await uploadStoryMedia(compressed);
+        if (!upload) {
+          setPostError('Media upload failed — please try again');
+          setIsPosting(false);
+          return;
+        }
+        mediaKey = upload.s3Key;
+        mediaUrl = upload.url;
+        mediaBytes = BigInt(upload.bytes);
+        mediaType = 'image/webp';
       }
 
       const ownerIdentity = isOrgView ? orgIdentityHex : profileIdentity!;
@@ -228,7 +246,7 @@ function ProfilePage() {
         setPostError(`Daily post limit reached (${DAILY_POST_LIMIT} per day)`);
         return;
       }
-      await createStoryPost(ownerIdentity, storyContent.trim(), mediaData, mediaTypes, activeOrg?.id);
+      await createStoryPost(ownerIdentity, storyContent.trim(), mediaData, mediaTypes, activeOrg?.id, mediaKey, mediaUrl, mediaBytes, mediaType);
 
       setStoryContent('');
       setStoryMedia(null);
@@ -387,8 +405,8 @@ function ProfilePage() {
                     </div>
                   </Link>
                   <p className="story-content">{story.content}</p>
-                  {story.mediaData && story.mediaData.length > 0 && (
-                    <img src={story.mediaData} alt="Story media" className="story-media" />
+                  {(story.mediaUrl || (story.mediaData && story.mediaData.length > 0)) && (
+                    <img src={story.mediaUrl || story.mediaData} alt="Story media" className="story-media" />
                   )}
                 </div>
               ))}

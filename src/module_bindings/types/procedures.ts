@@ -6,6 +6,7 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all procedure arg schemas
+import * as CanDeleteGalleryPhotoProcedure from "../can_delete_gallery_photo_procedure";
 import * as CheckDiditVerificationProcedure from "../check_didit_verification_procedure";
 import * as CreateVerifiedProfileProcedure from "../create_verified_profile_procedure";
 import * as GalleryUploadCountTodayProcedure from "../gallery_upload_count_today_procedure";
@@ -17,6 +18,8 @@ import * as RecordPendingRegistrationProcedure from "../record_pending_registrat
 import * as SearchProfilesProcedure from "../search_profiles_procedure";
 import * as WhoamiProcedure from "../whoami_procedure";
 
+export type CanDeleteGalleryPhotoArgs = __Infer<typeof CanDeleteGalleryPhotoProcedure.params>;
+export type CanDeleteGalleryPhotoResult = __Infer<typeof CanDeleteGalleryPhotoProcedure.returnType>;
 export type CheckDiditVerificationArgs = __Infer<typeof CheckDiditVerificationProcedure.params>;
 export type CheckDiditVerificationResult = __Infer<typeof CheckDiditVerificationProcedure.returnType>;
 export type CreateVerifiedProfileArgs = __Infer<typeof CreateVerifiedProfileProcedure.params>;

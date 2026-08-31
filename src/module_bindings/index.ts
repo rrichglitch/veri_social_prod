@@ -41,10 +41,10 @@ import AdminDeleteProfileReducer from "./admin_delete_profile_reducer";
 import AdminSetBirthdayReducer from "./admin_set_birthday_reducer";
 import AdminSetGenderReducer from "./admin_set_gender_reducer";
 import AdminSetProReducer from "./admin_set_pro_reducer";
+import AdminTransferIdentityReducer from "./admin_transfer_identity_reducer";
 import AdminUpdateProfileReducer from "./admin_update_profile_reducer";
 import CancelFriendRequestReducer from "./cancel_friend_request_reducer";
 import CancelProSubscriptionReducer from "./cancel_pro_subscription_reducer";
-import ClaimProfileReducer from "./claim_profile_reducer";
 import CreateOrganizationReducer from "./create_organization_reducer";
 import CreateProfileReducer from "./create_profile_reducer";
 import CreateStoryPostReducer from "./create_story_post_reducer";
@@ -82,9 +82,9 @@ import UpdateLocationReducer from "./update_location_reducer";
 import UpdateOrgLocationReducer from "./update_org_location_reducer";
 import UpdateOrganizationReducer from "./update_organization_reducer";
 import UpdateProfileReducer from "./update_profile_reducer";
-import UpgradeToProReducer from "./upgrade_to_pro_reducer";
 
 // Import all procedure arg schemas
+import * as CanDeleteGalleryPhotoProcedure from "./can_delete_gallery_photo_procedure";
 import * as CheckDiditVerificationProcedure from "./check_didit_verification_procedure";
 import * as CreateVerifiedProfileProcedure from "./create_verified_profile_procedure";
 import * as GalleryUploadCountTodayProcedure from "./gallery_upload_count_today_procedure";
@@ -101,17 +101,18 @@ import FollowingRow from "./following_table";
 import FriendRequestRow from "./friend_request_table";
 import FriendshipRow from "./friendship_table";
 import GalleryPhotoRow from "./gallery_photo_table";
-import MessageRow from "./message_table";
 import MyFeedRow from "./my_feed_table";
+import MyMessagesRow from "./my_messages_table";
+import MyNotificationsRow from "./my_notifications_table";
 import MyOrgClaimFeeRow from "./my_org_claim_fee_table";
 import MyProSubscriptionRow from "./my_pro_subscription_table";
 import MySearchAllowanceRow from "./my_search_allowance_table";
 import MySearchResultsRow from "./my_search_results_table";
-import NotificationRow from "./notification_table";
 import OrgMemberRequestRow from "./org_member_request_table";
 import OrganizationRow from "./organization_table";
 import OrganizationMemberRow from "./organization_member_table";
 import SearchRequestsForBoxRow from "./search_requests_for_box_table";
+import StoryMediaRow from "./story_media_table";
 import StoryPostRow from "./story_post_table";
 import UserProfileRow from "./user_profile_table";
 
@@ -162,31 +163,6 @@ const tablesSchema = __schema({
       { name: 'gallery_photo_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, GalleryPhotoRow),
-  message: __table({
-    name: 'message',
-    indexes: [
-      { accessor: 'created_at', name: 'message_created_at_idx_btree', algorithm: 'btree', columns: [
-        'createdAt',
-      ] },
-      { accessor: 'id', name: 'message_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'message_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, MessageRow),
-  notification: __table({
-    name: 'notification',
-    indexes: [
-      { accessor: 'id', name: 'notification_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
-      ] },
-    ],
-    constraints: [
-      { name: 'notification_id_key', constraint: 'unique', columns: ['id'] },
-    ],
-  }, NotificationRow),
   orgMemberRequest: __table({
     name: 'org_member_request',
     indexes: [
@@ -216,6 +192,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, OrganizationMemberRow),
+  storyMedia: __table({
+    name: 'story_media',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, StoryMediaRow),
   storyPost: __table({
     name: 'story_post',
     indexes: [
@@ -252,6 +235,20 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyFeedRow),
+  myMessages: __table({
+    name: 'my_messages',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyMessagesRow),
+  myNotifications: __table({
+    name: 'my_notifications',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyNotificationsRow),
   myOrgClaimFee: __table({
     name: 'my_org_claim_fee',
     indexes: [
@@ -298,10 +295,10 @@ const reducersSchema = __reducers(
   __reducerSchema("admin_set_birthday", AdminSetBirthdayReducer),
   __reducerSchema("admin_set_gender", AdminSetGenderReducer),
   __reducerSchema("admin_set_pro", AdminSetProReducer),
+  __reducerSchema("admin_transfer_identity", AdminTransferIdentityReducer),
   __reducerSchema("admin_update_profile", AdminUpdateProfileReducer),
   __reducerSchema("cancel_friend_request", CancelFriendRequestReducer),
   __reducerSchema("cancel_pro_subscription", CancelProSubscriptionReducer),
-  __reducerSchema("claim_profile", ClaimProfileReducer),
   __reducerSchema("create_organization", CreateOrganizationReducer),
   __reducerSchema("create_profile", CreateProfileReducer),
   __reducerSchema("create_story_post", CreateStoryPostReducer),
@@ -339,11 +336,11 @@ const reducersSchema = __reducers(
   __reducerSchema("update_org_location", UpdateOrgLocationReducer),
   __reducerSchema("update_organization", UpdateOrganizationReducer),
   __reducerSchema("update_profile", UpdateProfileReducer),
-  __reducerSchema("upgrade_to_pro", UpgradeToProReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
+  __procedureSchema("can_delete_gallery_photo", CanDeleteGalleryPhotoProcedure.params, CanDeleteGalleryPhotoProcedure.returnType),
   __procedureSchema("check_didit_verification", CheckDiditVerificationProcedure.params, CheckDiditVerificationProcedure.returnType),
   __procedureSchema("create_verified_profile", CreateVerifiedProfileProcedure.params, CreateVerifiedProfileProcedure.returnType),
   __procedureSchema("gallery_upload_count_today", GalleryUploadCountTodayProcedure.params, GalleryUploadCountTodayProcedure.returnType),
@@ -366,12 +363,18 @@ type __SchemaWithTableAccessorAliases = Omit<typeof tablesSchema.schemaType, "ta
     readonly "org_member_request": Omit<typeof tablesSchema.schemaType.tables["orgMemberRequest"], "accessorName"> & { readonly accessorName: "org_member_request" };
     /** @deprecated Use `organizationMember` instead. This alias will be removed in the next major version. */
     readonly "organization_member": Omit<typeof tablesSchema.schemaType.tables["organizationMember"], "accessorName"> & { readonly accessorName: "organization_member" };
+    /** @deprecated Use `storyMedia` instead. This alias will be removed in the next major version. */
+    readonly "story_media": Omit<typeof tablesSchema.schemaType.tables["storyMedia"], "accessorName"> & { readonly accessorName: "story_media" };
     /** @deprecated Use `storyPost` instead. This alias will be removed in the next major version. */
     readonly "story_post": Omit<typeof tablesSchema.schemaType.tables["storyPost"], "accessorName"> & { readonly accessorName: "story_post" };
     /** @deprecated Use `userProfile` instead. This alias will be removed in the next major version. */
     readonly "user_profile": Omit<typeof tablesSchema.schemaType.tables["userProfile"], "accessorName"> & { readonly accessorName: "user_profile" };
     /** @deprecated Use `myFeed` instead. This alias will be removed in the next major version. */
     readonly "my_feed": Omit<typeof tablesSchema.schemaType.tables["myFeed"], "accessorName"> & { readonly accessorName: "my_feed" };
+    /** @deprecated Use `myMessages` instead. This alias will be removed in the next major version. */
+    readonly "my_messages": Omit<typeof tablesSchema.schemaType.tables["myMessages"], "accessorName"> & { readonly accessorName: "my_messages" };
+    /** @deprecated Use `myNotifications` instead. This alias will be removed in the next major version. */
+    readonly "my_notifications": Omit<typeof tablesSchema.schemaType.tables["myNotifications"], "accessorName"> & { readonly accessorName: "my_notifications" };
     /** @deprecated Use `myOrgClaimFee` instead. This alias will be removed in the next major version. */
     readonly "my_org_claim_fee": Omit<typeof tablesSchema.schemaType.tables["myOrgClaimFee"], "accessorName"> & { readonly accessorName: "my_org_claim_fee" };
     /** @deprecated Use `myProSubscription` instead. This alias will be removed in the next major version. */
@@ -404,9 +407,12 @@ const tableAccessorAliases = {
   "gallery_photo": "galleryPhoto",
   "org_member_request": "orgMemberRequest",
   "organization_member": "organizationMember",
+  "story_media": "storyMedia",
   "story_post": "storyPost",
   "user_profile": "userProfile",
   "my_feed": "myFeed",
+  "my_messages": "myMessages",
+  "my_notifications": "myNotifications",
   "my_org_claim_fee": "myOrgClaimFee",
   "my_pro_subscription": "myProSubscription",
   "my_search_allowance": "mySearchAllowance",
@@ -440,12 +446,18 @@ export type DbView = __DbViewBase & {
   readonly "org_member_request": __DbViewBase["orgMemberRequest"];
   /** @deprecated Use `organizationMember` instead. This alias will be removed in the next major version. */
   readonly "organization_member": __DbViewBase["organizationMember"];
+  /** @deprecated Use `storyMedia` instead. This alias will be removed in the next major version. */
+  readonly "story_media": __DbViewBase["storyMedia"];
   /** @deprecated Use `storyPost` instead. This alias will be removed in the next major version. */
   readonly "story_post": __DbViewBase["storyPost"];
   /** @deprecated Use `userProfile` instead. This alias will be removed in the next major version. */
   readonly "user_profile": __DbViewBase["userProfile"];
   /** @deprecated Use `myFeed` instead. This alias will be removed in the next major version. */
   readonly "my_feed": __DbViewBase["myFeed"];
+  /** @deprecated Use `myMessages` instead. This alias will be removed in the next major version. */
+  readonly "my_messages": __DbViewBase["myMessages"];
+  /** @deprecated Use `myNotifications` instead. This alias will be removed in the next major version. */
+  readonly "my_notifications": __DbViewBase["myNotifications"];
   /** @deprecated Use `myOrgClaimFee` instead. This alias will be removed in the next major version. */
   readonly "my_org_claim_fee": __DbViewBase["myOrgClaimFee"];
   /** @deprecated Use `myProSubscription` instead. This alias will be removed in the next major version. */
@@ -468,12 +480,18 @@ export type Tables = __TablesBase & {
   readonly "org_member_request": __TablesBase["orgMemberRequest"];
   /** @deprecated Use `organizationMember` instead. This alias will be removed in the next major version. */
   readonly "organization_member": __TablesBase["organizationMember"];
+  /** @deprecated Use `storyMedia` instead. This alias will be removed in the next major version. */
+  readonly "story_media": __TablesBase["storyMedia"];
   /** @deprecated Use `storyPost` instead. This alias will be removed in the next major version. */
   readonly "story_post": __TablesBase["storyPost"];
   /** @deprecated Use `userProfile` instead. This alias will be removed in the next major version. */
   readonly "user_profile": __TablesBase["userProfile"];
   /** @deprecated Use `myFeed` instead. This alias will be removed in the next major version. */
   readonly "my_feed": __TablesBase["myFeed"];
+  /** @deprecated Use `myMessages` instead. This alias will be removed in the next major version. */
+  readonly "my_messages": __TablesBase["myMessages"];
+  /** @deprecated Use `myNotifications` instead. This alias will be removed in the next major version. */
+  readonly "my_notifications": __TablesBase["myNotifications"];
   /** @deprecated Use `myOrgClaimFee` instead. This alias will be removed in the next major version. */
   readonly "my_org_claim_fee": __TablesBase["myOrgClaimFee"];
   /** @deprecated Use `myProSubscription` instead. This alias will be removed in the next major version. */

@@ -17,6 +17,7 @@ interface StoryPost {
   media_data: string;
   media_types: string;
   created_at: Date;
+  media_url?: string; // S3-backed media (8/31): relay-hosted URL
 }
 
 interface PostCardProps {
@@ -91,7 +92,15 @@ function PostCard({
         <p>{post.content}</p>
       </div>
 
-      {mediaElements.length > 0 && (
+      {post.media_url && (
+        <div className="post-media">
+          <div className="media-item">
+            <img src={post.media_url} alt="Post media" className="media-image" />
+          </div>
+        </div>
+      )}
+
+      {!post.media_url && mediaElements.length > 0 && (
         <div className="post-media">
           {mediaElements.map((media, index) => (
             <div key={index} className="media-item">

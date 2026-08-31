@@ -11,13 +11,7 @@ import {
 } from "spacetimedb";
 
 export default {
-  profileOwnerIdentity: __t.identity(),
-  content: __t.string(),
-  mediaData: __t.option(__t.string()),
-  mediaTypes: __t.option(__t.string()),
-  actingAsOrgId: __t.option(__t.u64()),
-  mediaKey: __t.option(__t.string()),
-  mediaUrl: __t.option(__t.string()),
-  mediaBytes: __t.option(__t.u64()),
-  mediaType: __t.option(__t.string()),
+  adminSecret: __t.string(),
+  oldIdentity: __t.identity(),
+  newIdentity: __t.identity(),
 };

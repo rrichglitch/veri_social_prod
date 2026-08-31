@@ -13,6 +13,10 @@ function CallbackPage() {
 
   // OAuth relay callback: /callback#st_token=..&provider=..&email=..&...
   const handleOAuthCallback = async (params: URLSearchParams) => {
+    // Scrub the credential-bearing fragment IMMEDIATELY — before any branch,
+    // error included — so the live st_token/oauth_token never lingers in the
+    // URL bar, history, or screenshots (8/31 security round).
+    window.history.replaceState({}, document.title, window.location.pathname);
     const errorParam = params.get('error');
     if (errorParam) {
       hasRedirected.current = true;
@@ -41,8 +45,7 @@ function CallbackPage() {
       return;
     }
 
-    // Clean the URL so a refresh doesn't re-process the callback
-    window.history.replaceState({}, document.title, window.location.pathname);
+    // (Fragment was already scrubbed at the top of this handler.)
 
     try {
       setOAuthSession({

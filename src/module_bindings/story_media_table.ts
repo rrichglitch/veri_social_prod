@@ -10,6 +10,11 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  email: __t.string(),
-};
+export default __t.row({
+  posterIdentity: __t.identity().name("poster_identity"),
+  createdAt: __t.timestamp().name("created_at"),
+  mediaKey: __t.string().name("media_key"),
+  mediaUrl: __t.string().name("media_url"),
+  mediaBytes: __t.u64().name("media_bytes"),
+  mediaType: __t.string().name("media_type"),
+});

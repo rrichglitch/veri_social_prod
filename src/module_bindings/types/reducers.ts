@@ -13,10 +13,10 @@ import AdminDeleteProfileReducer from "../admin_delete_profile_reducer";
 import AdminSetBirthdayReducer from "../admin_set_birthday_reducer";
 import AdminSetGenderReducer from "../admin_set_gender_reducer";
 import AdminSetProReducer from "../admin_set_pro_reducer";
+import AdminTransferIdentityReducer from "../admin_transfer_identity_reducer";
 import AdminUpdateProfileReducer from "../admin_update_profile_reducer";
 import CancelFriendRequestReducer from "../cancel_friend_request_reducer";
 import CancelProSubscriptionReducer from "../cancel_pro_subscription_reducer";
-import ClaimProfileReducer from "../claim_profile_reducer";
 import CreateOrganizationReducer from "../create_organization_reducer";
 import CreateProfileReducer from "../create_profile_reducer";
 import CreateStoryPostReducer from "../create_story_post_reducer";
@@ -54,7 +54,6 @@ import UpdateLocationReducer from "../update_location_reducer";
 import UpdateOrgLocationReducer from "../update_org_location_reducer";
 import UpdateOrganizationReducer from "../update_organization_reducer";
 import UpdateProfileReducer from "../update_profile_reducer";
-import UpgradeToProReducer from "../upgrade_to_pro_reducer";
 
 export type AcceptFriendRequestParams = __Infer<typeof AcceptFriendRequestReducer>;
 export type AcceptOrgMemberParams = __Infer<typeof AcceptOrgMemberReducer>;
@@ -63,10 +62,10 @@ export type AdminDeleteProfileParams = __Infer<typeof AdminDeleteProfileReducer>
 export type AdminSetBirthdayParams = __Infer<typeof AdminSetBirthdayReducer>;
 export type AdminSetGenderParams = __Infer<typeof AdminSetGenderReducer>;
 export type AdminSetProParams = __Infer<typeof AdminSetProReducer>;
+export type AdminTransferIdentityParams = __Infer<typeof AdminTransferIdentityReducer>;
 export type AdminUpdateProfileParams = __Infer<typeof AdminUpdateProfileReducer>;
 export type CancelFriendRequestParams = __Infer<typeof CancelFriendRequestReducer>;
 export type CancelProSubscriptionParams = __Infer<typeof CancelProSubscriptionReducer>;
-export type ClaimProfileParams = __Infer<typeof ClaimProfileReducer>;
 export type CreateOrganizationParams = __Infer<typeof CreateOrganizationReducer>;
 export type CreateProfileParams = __Infer<typeof CreateProfileReducer>;
 export type CreateStoryPostParams = __Infer<typeof CreateStoryPostReducer>;
@@ -104,5 +103,4 @@ export type UpdateLocationParams = __Infer<typeof UpdateLocationReducer>;
 export type UpdateOrgLocationParams = __Infer<typeof UpdateOrgLocationReducer>;
 export type UpdateOrganizationParams = __Infer<typeof UpdateOrganizationReducer>;
 export type UpdateProfileParams = __Infer<typeof UpdateProfileReducer>;
-export type UpgradeToProParams = __Infer<typeof UpgradeToProReducer>;
 
